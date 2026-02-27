@@ -65,7 +65,7 @@ def _advance(marker: DMarker) -> list[float]:
 
 class MockGenerator:
     MIN_MARKERS = 2
-    MAX_MARKERS = 12
+    MAX_MARKERS = 120
 
     def __init__(self, initial_count: int = 5) -> None:
         self._markers: dict[str, DMarker] = {}
