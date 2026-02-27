@@ -5,10 +5,23 @@ let _map = null;
 const _markers = new Map(); // dom_id -> L.Marker
 
 // ---------------------------------------------------------------------------
-// DynamicMap — initialises the Leaflet map
+// DynamicMap — initialises the Leaflet map and wires all map-level events
 // ---------------------------------------------------------------------------
 
 window.Hooks = window.Hooks ?? {};
+
+// Map events pushed to the server (with their payload builders).
+// High-frequency continuous events (move, zoom, movestart, zoomstart) are
+// omitted — they fire on every animation frame during pan/zoom.
+const MAP_EVENTS = [
+  "click", "dblclick", "contextmenu",
+  "mouseover", "mouseout",
+  "moveend", "zoomend", "zoomlevelschange", "resize",
+  "locationfound", "locationerror",
+  "popupopen", "popupclose",
+  "tooltipopen", "tooltipclose",
+  "layeradd", "layerremove",
+];
 
 window.Hooks.DynamicMap = {
   mounted() {
@@ -17,12 +30,53 @@ window.Hooks.DynamicMap = {
       attribution: "© OpenStreetMap contributors",
       maxZoom: 18,
     }).addTo(_map);
+
+    // Wire all low-frequency map events
+    MAP_EVENTS.forEach((evtName) => {
+      _map.on(evtName, (e) => {
+        const center = _map.getCenter();
+        this.pushEvent("map-event", {
+          event: evtName,
+          latLng: e.latlng ? [e.latlng.lat, e.latlng.lng] : null,
+          center: [center.lat, center.lng],
+          zoom: _map.getZoom(),
+        });
+      });
+    });
+
+    // mousemove — throttled to at most once per second
+    let _lastMove = 0;
+    _map.on("mousemove", (e) => {
+      const now = Date.now();
+      if (now - _lastMove < 1000) return;
+      _lastMove = now;
+      const center = _map.getCenter();
+      this.pushEvent("map-event", {
+        event: "mousemove",
+        latLng: [e.latlng.lat, e.latlng.lng],
+        center: [center.lat, center.lng],
+        zoom: _map.getZoom(),
+      });
+    });
   },
 };
 
 // ---------------------------------------------------------------------------
+// Marker events pushed to the server.
+// "drag" and "move" are excluded — they fire on every animation frame.
+// ---------------------------------------------------------------------------
+
+const MARKER_EVENTS = [
+  "click", "dblclick", "contextmenu",
+  "mouseover", "mouseout", "mousedown", "mouseup",
+  "dragstart", "dragend",
+  "popupopen", "popupclose",
+  "tooltipopen", "tooltipclose",
+];
+
+// ---------------------------------------------------------------------------
 // DMarkItem — one hook per stream sentinel <div>
-//   mounted()   → add a Leaflet marker
+//   mounted()   → add a Leaflet marker and wire all marker events
 //   updated()   → move the Leaflet marker to new lat/lng
 //   destroyed() → remove the Leaflet marker
 // ---------------------------------------------------------------------------
@@ -31,6 +85,7 @@ window.Hooks.DMarkItem = {
   mounted() {
     if (!_map) return;
     const { name, lat, lng } = this.el.dataset;
+    const domId = this.el.id;
 
     const icon = L.divIcon({
       className: "",
@@ -45,11 +100,25 @@ window.Hooks.DMarkItem = {
     const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
       icon,
       dmarkName: name,
+      draggable: true,
     })
       .addTo(_map)
       .bindTooltip(name, { permanent: false, direction: "top" });
 
-    _markers.set(this.el.id, marker);
+    // Wire all marker events
+    MARKER_EVENTS.forEach((evtName) => {
+      marker.on(evtName, () => {
+        const ll = marker.getLatLng();
+        this.pushEvent("marker-event", {
+          event: evtName,
+          id: domId,
+          name,
+          latLng: [ll.lat, ll.lng],
+        });
+      });
+    });
+
+    _markers.set(domId, marker);
     _log("add", `＋ ${name} appeared`);
   },
 

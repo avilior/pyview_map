@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
@@ -18,6 +18,8 @@ def json_encode(val: Any) -> str:
 @dataclass
 class DynamicMapContext:
     markers: Stream[DMarker]
+    last_marker_event: str = ""
+    last_map_event: str = ""
 
 
 class DynamicMapLiveView(LiveView[DynamicMapContext]):
@@ -30,10 +32,10 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
     """
 
     async def mount(self, socket: LiveViewSocket[DynamicMapContext], session):
-        self._generator = MockGenerator(initial_count=5)
-        socket.context = DynamicMapContext(
-            markers=Stream(self._generator.markers, name="markers")
-        )
+        self._generator = MockGenerator(initial_count=120)
+
+        socket.context = DynamicMapContext(markers=Stream(self._generator.markers, name="markers"))
+
         if socket.connected:
             socket.schedule_info(InfoEvent("tick"), seconds=1.2)
 
@@ -56,7 +58,23 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                 update_only=True,
             )
 
-    async def handle_event(
-        self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapContext]
-    ):
-        pass
+    async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapContext]):
+        if event == "marker-event":
+            evt  = payload.get("event", "?")
+            name = payload.get("name", payload.get("id", "?"))
+            latlng = payload.get("latLng")
+            detail = f"{evt} → {name}"
+            if latlng:
+                detail += f" @ ({latlng[0]:.2f}, {latlng[1]:.2f})"
+            socket.context.last_marker_event = detail
+
+        elif event == "map-event":
+            evt    = payload.get("event", "?")
+            center = payload.get("center")
+            zoom   = payload.get("zoom")
+            detail = evt
+            if center:
+                detail += f" center=({center[0]:.2f}, {center[1]:.2f})"
+            if zoom is not None:
+                detail += f" zoom={zoom}"
+            socket.context.last_map_event = detail
