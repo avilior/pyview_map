@@ -23,6 +23,14 @@ class DMarker:
     heading: float = field(default_factory=lambda: random.uniform(0, 360))
     speed: float = field(default_factory=lambda: random.uniform(0.4, 1.2))
 
+    @property
+    def lat(self) -> float:
+        return self.lat_lng[0]
+
+    @property
+    def lng(self) -> float:
+        return self.lat_lng[1]
+
     def to_dict(self) -> dict:
         return {"id": self.id, "name": self.name, "latLng": self.lat_lng}
 
@@ -90,7 +98,7 @@ class MockGenerator:
         if op == "move":
             marker = random.choice(list(self._markers.values()))
             new_latlng = _advance(marker)
-            return {"op": "update", "id": marker.id, "latLng": new_latlng}
+            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng}
 
         if op == "add":
             marker = self._create_marker()

@@ -1,12 +1,13 @@
-import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
+from pyview.events import InfoEvent
+from pyview.stream import Stream
 from pyview.vendor.ibis import filters
 
-from .mock_generator import MockGenerator
+from .mock_generator import DMarker, MockGenerator
 
 
 @filters.register
@@ -16,51 +17,46 @@ def json_encode(val: Any) -> str:
 
 @dataclass
 class DynamicMapContext:
-    markers: list[dict]  # initial DMarker dicts rendered into the template
+    markers: Stream[DMarker]
 
 
 class DynamicMapLiveView(LiveView[DynamicMapContext]):
     """
     Dynamic Map
 
-    Markers (dmarks) are streamed in real-time from the server.
-    The backend can add, delete, or move markers without a full page reload.
-    A mock generator drives motion to simulate live tracking.
+    Uses pyview's Stream to push marker add, delete, and move operations
+    directly to the DOM via the LiveView diff protocol.  A scheduled
+    handle_info tick drives the mock movement simulation.
     """
 
     async def mount(self, socket: LiveViewSocket[DynamicMapContext], session):
         self._generator = MockGenerator(initial_count=5)
         socket.context = DynamicMapContext(
-            markers=[m.to_dict() for m in self._generator.markers]
+            markers=Stream(self._generator.markers, name="markers")
         )
-        asyncio.create_task(self._stream_updates(socket))
+        if socket.connected:
+            socket.schedule_info(InfoEvent("tick"), seconds=1.2)
 
-    async def _stream_updates(self, socket) -> None:
-        # Small delay so the WebSocket connection can fully establish
-        await asyncio.sleep(0.3)
-        while True:
-            await asyncio.sleep(1.2)
-            try:
-                update = self._generator.next_update()
-                op = update["op"]
+    async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicMapContext]):
+        if event.name != "tick":
+            return
 
-                if op == "add":
-                    await socket.push_event(
-                        "dmarker-add",
-                        {"id": update["id"], "name": update["name"], "latLng": update["latLng"]},
-                    )
-                elif op == "delete":
-                    await socket.push_event("dmarker-delete", {"id": update["id"]})
-                elif op == "update":
-                    await socket.push_event(
-                        "dmarker-update",
-                        {"id": update["id"], "latLng": update["latLng"]},
-                    )
-            except Exception as exc:
-                print(f"[DynamicMap] stream ended: {exc}")
-                break
+        update = self._generator.next_update()
+        op = update["op"]
+
+        if op == "add":
+            socket.context.markers.insert(
+                DMarker(id=update["id"], name=update["name"], lat_lng=update["latLng"])
+            )
+        elif op == "delete":
+            socket.context.markers.delete_by_id(f"markers-{update['id']}")
+        elif op == "update":
+            socket.context.markers.insert(
+                DMarker(id=update["id"], name=update["name"], lat_lng=update["latLng"]),
+                update_only=True,
+            )
 
     async def handle_event(
         self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapContext]
     ):
-        pass  # no client-initiated events required
+        pass

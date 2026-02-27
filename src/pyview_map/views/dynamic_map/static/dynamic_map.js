@@ -1,20 +1,36 @@
+// Shared Leaflet map instance and marker registry.
+// DynamicMap hook (the map <div>) writes _map once on mount.
+// DMarkItem hooks (the invisible stream sentinels) read it.
+let _map = null;
+const _markers = new Map(); // dom_id -> L.Marker
+
 // ---------------------------------------------------------------------------
-// DynamicMap — Leaflet wrapper that tracks dmarks by id
+// DynamicMap — initialises the Leaflet map
 // ---------------------------------------------------------------------------
 
-class DynamicMap {
-  constructor(element, center, zoom) {
-    this.map = L.map(element).setView(center, zoom);
-    this.markers = new Map(); // id -> L.Marker
+window.Hooks = window.Hooks ?? {};
 
+window.Hooks.DynamicMap = {
+  mounted() {
+    _map = L.map(this.el).setView([39.5, -98.35], 4);
     L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
       maxZoom: 18,
-    }).addTo(this.map);
-  }
+    }).addTo(_map);
+  },
+};
 
-  addMarker(dmark) {
-    if (this.markers.has(dmark.id)) return;
+// ---------------------------------------------------------------------------
+// DMarkItem — one hook per stream sentinel <div>
+//   mounted()   → add a Leaflet marker
+//   updated()   → move the Leaflet marker to new lat/lng
+//   destroyed() → remove the Leaflet marker
+// ---------------------------------------------------------------------------
+
+window.Hooks.DMarkItem = {
+  mounted() {
+    if (!_map) return;
+    const { name, lat, lng } = this.el.dataset;
 
     const icon = L.divIcon({
       className: "",
@@ -26,85 +42,54 @@ class DynamicMap {
       iconAnchor: [6, 6],
     });
 
-    const marker = L.marker(dmark.latLng, {
+    const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
       icon,
-      dmarkId: dmark.id,
-      dmarkName: dmark.name,
+      dmarkName: name,
     })
-      .addTo(this.map)
-      .bindTooltip(dmark.name, { permanent: false, direction: "top" });
+      .addTo(_map)
+      .bindTooltip(name, { permanent: false, direction: "top" });
 
-    this.markers.set(dmark.id, marker);
-  }
-
-  removeMarker(id) {
-    const marker = this.markers.get(id);
-    if (!marker) return;
-    marker.remove();
-    this.markers.delete(id);
-  }
-
-  moveMarker(id, latLng) {
-    const marker = this.markers.get(id);
-    if (!marker) return;
-    marker.setLatLng(latLng);
-  }
-
-  getName(id) {
-    const marker = this.markers.get(id);
-    return marker ? marker.options.dmarkName : id;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// PyView hook
-// ---------------------------------------------------------------------------
-
-window.Hooks = window.Hooks ?? {};
-
-window.Hooks.DynamicMap = {
-  mounted() {
-    // Centred on the continental US
-    this.dmap = new DynamicMap(this.el, [39.5, -98.35], 4);
-
-    const initial = JSON.parse(this.el.dataset.markers);
-    initial.forEach((m) => this.dmap.addMarker(m));
-
-    // ── server → client events ──────────────────────────────────────────
-
-    this.handleEvent("dmarker-add", (data) => {
-      this.dmap.addMarker(data);
-      this._log("add", `＋ ${data.name} appeared`);
-    });
-
-    this.handleEvent("dmarker-delete", (data) => {
-      const name = this.dmap.getName(data.id);
-      this.dmap.removeMarker(data.id);
-      this._log("delete", `✕ ${name} removed`);
-    });
-
-    this.handleEvent("dmarker-update", (data) => {
-      const name = this.dmap.getName(data.id);
-      this.dmap.moveMarker(data.id, data.latLng);
-      this._log("update", `→ ${name} moved`);
-    });
+    _markers.set(this.el.id, marker);
+    _log("add", `＋ ${name} appeared`);
   },
 
-  // ── activity log ────────────────────────────────────────────────────────
+  updated() {
+    const marker = _markers.get(this.el.id);
+    if (!marker) return;
+    const { lat, lng } = this.el.dataset;
+    marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
+    _log("update", `→ ${marker.options.dmarkName} moved`);
+  },
 
-  _log(type, message) {
-    const log = document.getElementById("dmap-log");
-    if (!log) return;
-
-    const entry = document.createElement("div");
-    entry.className = `log-${type}`;
-    const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    entry.textContent = `${ts}  ${message}`;
-    log.prepend(entry);
-
-    // Cap the log at 60 entries
-    while (log.children.length > 60) {
-      log.removeChild(log.lastChild);
-    }
+  destroyed() {
+    const marker = _markers.get(this.el.id);
+    if (!marker) return;
+    const name = marker.options.dmarkName;
+    marker.remove();
+    _markers.delete(this.el.id);
+    _log("delete", `✕ ${name} removed`);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Activity log helper
+// ---------------------------------------------------------------------------
+
+function _log(type, message) {
+  const log = document.getElementById("dmap-log");
+  if (!log) return;
+
+  const entry = document.createElement("div");
+  entry.className = `log-${type}`;
+  const ts = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  entry.textContent = `${ts}  ${message}`;
+  log.prepend(entry);
+
+  while (log.children.length > 60) {
+    log.removeChild(log.lastChild);
+  }
+}
