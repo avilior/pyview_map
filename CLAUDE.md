@@ -33,9 +33,13 @@ src/pyview_map/
         ├── dynamic_map.py        # DynamicMapLiveView (generic) + MarkerSource protocol
         ├── dynamic_map.html      # phx-update="stream" sentinel divs + phx-update="ignore" map
         ├── dynamic_map.css
-        ├── mock_generator.py     # MockGenerator — example MarkerSource (heading/speed simulation)
+        ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
+        ├── api_marker_source.py  # APIMarkerSource — MarkerSource backed by asyncio.Queue (API-driven)
+        ├── marker_api.py         # FastAPI sub-app — JSON-RPC 2.0 endpoint at /api/rpc
         └── static/
             └── dynamic_map.js    # Hooks.DynamicMap (map init) + Hooks.DMarkItem (lifecycle)
+examples/
+└── mock_client.py               # Reference external client — drives /dmap via JSON-RPC HTTP
 ```
 
 ## Adding a new view
@@ -146,6 +150,7 @@ class MySource:                          # no need to inherit — duck typing
         # {"op": "add",    "id": str, "name": str, "latLng": [lat, lng]}
         # {"op": "delete", "id": str}
         # {"op": "update", "id": str, "name": str, "latLng": [lat, lng]}
+        # {"op": "noop"}   ← return this when there is nothing to do this tick
         return {"op": "update", "id": "1", "name": "HQ", "latLng": [40.71, -74.01]}
 ```
 
@@ -161,5 +166,35 @@ app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource))
 app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_interval=2.0, fleet_id=42))
 ```
 
-`MockGenerator` in `mock_generator.py` is a reference implementation of
-`MarkerSource` — read it as a starting point for your own source.
+`MockGenerator` in `mock_generator.py` is an in-process reference implementation.
+`APIMarkerSource` in `api_marker_source.py` is the default source used by `/dmap` —
+it receives operations from the JSON-RPC API and queues them for the LiveView tick.
+
+## JSON-RPC API (`/api/rpc`)
+
+`marker_api.py` mounts a FastAPI sub-app at `/api` with a single `POST /rpc` endpoint
+that speaks JSON-RPC 2.0. It is mounted in `__main__.py`:
+
+```python
+app.mount("/api", api_app)
+```
+
+### Methods
+
+| Method | Params | Effect |
+|---|---|---|
+| `markers.add` | `id`, `name`, `latLng` | Add marker; enqueue `add` op |
+| `markers.update` | `id`, `name`, `latLng` | Move/rename marker; enqueue `update` op |
+| `markers.delete` | `id` | Remove marker; enqueue `delete` op |
+| `markers.list` | — | Return current `_markers` dict |
+
+`APIMarkerSource` uses **class-level** state (`_queue`, `_markers`) so all LiveView
+connections share the same queue — every connected browser sees every update.
+
+### Hook init ordering pitfall
+
+`DMarkItem.mounted()` can fire before `DynamicMap.mounted()` sets `_map` (Phoenix
+LiveView processes the `phx-update="stream"` container before the
+`phx-update="ignore"` wrapper). To handle this, `dynamic_map.js` queues pending
+hooks in `_pending[]` and flushes them inside `DynamicMap.mounted()` after `_map`
+is created.
