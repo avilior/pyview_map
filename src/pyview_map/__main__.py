@@ -8,6 +8,7 @@ import uvicorn
 
 from pyview_map.views.maps.map import MapLiveView
 from pyview_map.views.dynamic_map import DynamicMapLiveView
+from pyview_map.views.dynamic_map.mock_generator import MockGenerator
 from pyview_map.app import app
 
 # app = PyView()
@@ -30,7 +31,7 @@ def main():
     print("Dynamic Map available at    http://localhost:8123/dmap")
 
     app.add_live_view("/map", MapLiveView)
-    app.add_live_view("/dmap", DynamicMapLiveView)
+    app.add_live_view("/dmap", DynamicMapLiveView.with_source(MockGenerator, initial_count=5))
 
     uvicorn.run("pyview_map.__main__:app", host="0.0.0.0", port=8123, reload=False)
 
