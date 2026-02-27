@@ -17,10 +17,13 @@ open-map:
 open-dmap:
     open http://localhost:8123/dmap
 
-# Kill any running instance, start the app, and open /dmap in the browser
-dmap:
-    #!/usr/bin/env bash
+# Stop any running pyview-map process
+stop:
     pkill -f "pyview-map" 2>/dev/null || true
+
+# Kill any running instance, start the app, and open /dmap in the browser
+dmap: stop
+    #!/usr/bin/env bash
     sleep 0.5
     uv run pyview-map &
     echo "Waiting for server..."
