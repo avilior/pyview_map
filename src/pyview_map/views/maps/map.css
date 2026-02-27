@@ -1,0 +1,14 @@
+/* Park icon hover effect */
+.park-icon {
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+button:hover .park-icon {
+    transform: scale(1.2);
+}
+
+/* Map container styling */
+#map {
+    background-color: #f8f9fa;
+}

@@ -1,0 +1,19 @@
+#dmap-log .log-add    { color: #16a34a; }
+#dmap-log .log-delete { color: #dc2626; }
+#dmap-log .log-update { color: #2563eb; }
+
+#dmap-log > div {
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#dmap-log > div:nth-child(odd) {
+    background-color: #f9fafb;
+}
+
+#dmap {
+    background-color: #f0f4f8;
+}
