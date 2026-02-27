@@ -2,13 +2,11 @@
 # from pathlib import Path
 
 import uvicorn
-# from markupsafe import Markup
-# from pyview import PyView, defaultRootTemplate
-# from starlette.staticfiles import StaticFiles
 
 from pyview_map.views.maps.map import MapLiveView
 from pyview_map.views.dynamic_map import DynamicMapLiveView
-from pyview_map.views.dynamic_map.mock_generator import MockGenerator
+from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
+from pyview_map.views.dynamic_map.marker_api import api_app
 from pyview_map.app import app
 
 # app = PyView()
@@ -29,9 +27,11 @@ from pyview_map.app import app
 def main():
     print("Starting PyView Map server on http://localhost:8123/map")
     print("Dynamic Map available at    http://localhost:8123/dmap")
+    print("Marker API available at     http://localhost:8123/api/rpc")
 
     app.add_live_view("/map", MapLiveView)
-    app.add_live_view("/dmap", DynamicMapLiveView.with_source(MockGenerator, initial_count=5))
+    app.add_live_view("/dmap", DynamicMapLiveView.with_source(APIMarkerSource))
+    app.mount("/api", api_app)
 
     uvicorn.run("pyview_map.__main__:app", host="0.0.0.0", port=8123, reload=False)
 

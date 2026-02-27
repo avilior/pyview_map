@@ -6,6 +6,8 @@ requires-python = ">=3.14"
 dependencies = [
     "pyview-web>=0.8.3",
     "uvicorn>=0.41.0",
+    "fastapi>=0.115",
+    "httpx>=0.28",
 ]
 
 [build-system]

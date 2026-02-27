@@ -112,6 +112,9 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
         update = self._source.next_update()
         op = update["op"]
 
+        if op == "noop":
+            return
+
         if op == "add":
             socket.context.markers.insert(
                 DMarker(id=update["id"], name=update["name"], lat_lng=update["latLng"])

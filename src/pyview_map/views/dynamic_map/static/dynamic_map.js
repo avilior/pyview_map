@@ -4,6 +4,48 @@
 let _map = null;
 const _markers = new Map(); // dom_id -> L.Marker
 
+// Hooks that mounted before the map was ready queue themselves here.
+// DynamicMap.mounted() flushes them once _map is initialised.
+const _pending = []; // Array of { el, hookCtx }
+
+function _addMarkerFromEl(el, hookCtx) {
+  const { name, lat, lng } = el.dataset;
+  const domId = el.id;
+
+  const icon = L.divIcon({
+    className: "",
+    html: `<div style="
+      background:#2563eb;border:2px solid #fff;border-radius:50%;
+      width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)">
+    </div>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  });
+
+  const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
+    icon,
+    dmarkName: name,
+    draggable: true,
+  })
+    .addTo(_map)
+    .bindTooltip(name, { permanent: false, direction: "top" });
+
+  MARKER_EVENTS.forEach((evtName) => {
+    marker.on(evtName, () => {
+      const ll = marker.getLatLng();
+      hookCtx.pushEvent("marker-event", {
+        event: evtName,
+        id: domId,
+        name,
+        latLng: [ll.lat, ll.lng],
+      });
+    });
+  });
+
+  _markers.set(domId, marker);
+  _log("add", `＋ ${name} appeared`);
+}
+
 // ---------------------------------------------------------------------------
 // DynamicMap — initialises the Leaflet map and wires all map-level events
 // ---------------------------------------------------------------------------
@@ -26,6 +68,12 @@ const MAP_EVENTS = [
 window.Hooks.DynamicMap = {
   mounted() {
     _map = L.map(this.el).setView([39.5, -98.35], 4);
+
+    // Flush any DMarkItem hooks that mounted before _map was ready
+    while (_pending.length) {
+      const { el, hookCtx } = _pending.shift();
+      _addMarkerFromEl(el, hookCtx);
+    }
     L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
       maxZoom: 18,
@@ -87,43 +135,12 @@ const MARKER_EVENTS = [
 
 window.Hooks.DMarkItem = {
   mounted() {
-    if (!_map) return;
-    const { name, lat, lng } = this.el.dataset;
-    const domId = this.el.id;
-
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="
-        background:#2563eb;border:2px solid #fff;border-radius:50%;
-        width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)">
-      </div>`,
-      iconSize: [12, 12],
-      iconAnchor: [6, 6],
-    });
-
-    const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
-      icon,
-      dmarkName: name,
-      draggable: true,
-    })
-      .addTo(_map)
-      .bindTooltip(name, { permanent: false, direction: "top" });
-
-    // Wire all marker events
-    MARKER_EVENTS.forEach((evtName) => {
-      marker.on(evtName, () => {
-        const ll = marker.getLatLng();
-        this.pushEvent("marker-event", {
-          event: evtName,
-          id: domId,
-          name,
-          latLng: [ll.lat, ll.lng],
-        });
-      });
-    });
-
-    _markers.set(domId, marker);
-    _log("add", `＋ ${name} appeared`);
+    if (!_map) {
+      // Map not ready yet — queue for flush in DynamicMap.mounted()
+      _pending.push({ el: this.el, hookCtx: this });
+      return;
+    }
+    _addMarkerFromEl(this.el, this);
   },
 
   updated() {
