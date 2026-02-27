@@ -29,11 +29,11 @@ src/pyview_map/
     │   ├── parks.py     # Static park data
     │   └── static/
     │       └── map.js   # ParksMap class + Hooks.ParksMap
-    └── dynamic_map/     # /dmap — Real-time streaming marker map
-        ├── dynamic_map.py        # LiveView class — Stream[DMarker] context, schedule_info tick
+    └── dynamic_map/     # /dmap — Generic real-time streaming marker map
+        ├── dynamic_map.py        # DynamicMapLiveView (generic) + MarkerSource protocol
         ├── dynamic_map.html      # phx-update="stream" sentinel divs + phx-update="ignore" map
         ├── dynamic_map.css
-        ├── mock_generator.py     # MockGenerator — heading/speed motion simulation
+        ├── mock_generator.py     # MockGenerator — example MarkerSource (heading/speed simulation)
         └── static/
             └── dynamic_map.js    # Hooks.DynamicMap (map init) + Hooks.DMarkItem (lifecycle)
 ```
@@ -123,3 +123,43 @@ manual cleanup is needed.
 
 Use `push_event` / `handleEvent` instead when you need to send arbitrary data
 to JS without modifying the DOM (e.g. `highlight-park` in the `/map` view).
+
+## DynamicMapLiveView — plugging in a custom data source
+
+`DynamicMapLiveView` is a generic framework. It knows nothing about where
+markers come from. Implement the `MarkerSource` protocol and register it with
+`with_source()`.
+
+### MarkerSource protocol
+
+```python
+from pyview_map.views.dynamic_map.dynamic_map import DMarker, MarkerSource
+
+class MySource:                          # no need to inherit — duck typing
+    @property
+    def markers(self) -> list[DMarker]:
+        """Called once on mount to populate the initial map state."""
+        return [DMarker(id="1", name="HQ", lat_lng=[40.7, -74.0])]
+
+    def next_update(self) -> dict:
+        """Called on every tick. Return one operation."""
+        # {"op": "add",    "id": str, "name": str, "latLng": [lat, lng]}
+        # {"op": "delete", "id": str}
+        # {"op": "update", "id": str, "name": str, "latLng": [lat, lng]}
+        return {"op": "update", "id": "1", "name": "HQ", "latLng": [40.71, -74.01]}
+```
+
+### Registering in __main__.py
+
+```python
+from pyview_map.views.dynamic_map import DynamicMapLiveView
+from myapp.sources import MySource
+
+app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource))
+
+# Pass constructor kwargs and override the tick interval (seconds):
+app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_interval=2.0, fleet_id=42))
+```
+
+`MockGenerator` in `mock_generator.py` is a reference implementation of
+`MarkerSource` — read it as a starting point for your own source.
