@@ -31,6 +31,10 @@ window.Hooks.DynamicMap = {
       maxZoom: 18,
     }).addTo(_map);
 
+    // Day/night terminator — updates every minute as the sun moves
+    const terminator = L.terminator({ fillOpacity: 0.25 }).addTo(_map);
+    setInterval(() => terminator.setTime(new Date()), 60_000);
+
     // Wire all low-frequency map events
     MAP_EVENTS.forEach((evtName) => {
       _map.on(evtName, (e) => {
