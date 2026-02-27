@@ -35,11 +35,11 @@ src/pyview_map/
         ├── dynamic_map.css
         ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
         ├── api_marker_source.py  # APIMarkerSource — MarkerSource backed by asyncio.Queue (API-driven)
-        ├── marker_api.py         # FastAPI sub-app — JSON-RPC 2.0 endpoint at /api/rpc
+        ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
         └── static/
             └── dynamic_map.js    # Hooks.DynamicMap (map init) + Hooks.DMarkItem (lifecycle)
 examples/
-└── mock_client.py               # Reference external client — drives /dmap via JSON-RPC HTTP
+└── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
 ```
 
 ## Adding a new view
@@ -170,14 +170,47 @@ app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_in
 `APIMarkerSource` in `api_marker_source.py` is the default source used by `/dmap` —
 it receives operations from the JSON-RPC API and queues them for the LiveView tick.
 
-## JSON-RPC API (`/api/rpc`)
+## Dependencies
 
-`marker_api.py` mounts a FastAPI sub-app at `/api` with a single `POST /rpc` endpoint
-that speaks JSON-RPC 2.0. It is mounted in `__main__.py`:
+The marker API uses packages from the
+[`http_stream_prj`](https://github.com/avilior/http_stream_prj) monorepo:
+
+| Package | Purpose |
+|---|---|
+| `http-stream-transport` | `JRPCService` for method registration, `mcp_router` for MCP endpoint |
+| `http-stream-client` | `ClientRPC` async client with MCP lifecycle |
+| `jrpc-common` | Shared `JSONRPCRequest` / `JSONRPCResponse` models |
+
+These are installed as git subdirectory dependencies (see `pyproject.toml` `[tool.uv.sources]`).
+
+## JSON-RPC API (`/api/mcp`)
+
+`marker_api.py` registers methods on the global `jrpc_service` from `http_stream_transport`
+and includes `mcp_router` on a FastAPI sub-app mounted at `/api`. The MCP endpoint is at
+`POST /api/mcp`. It is mounted in `__main__.py`:
 
 ```python
 app.mount("/api", api_app)
 ```
+
+### Authentication
+
+All requests to `/api/mcp` require a Bearer token:
+```
+Authorization: Bearer tok-acme-001
+```
+
+Pre-configured mock tokens: `tok-acme-001` (Acme Corp), `tok-globex-002`, `tok-initech-003`.
+
+### MCP handshake
+
+Clients must complete the MCP lifecycle before calling marker methods:
+1. `GET /api/health` — liveness check
+2. `POST /api/mcp` — send `initialize` request → receive session ID
+3. `POST /api/mcp` — send `notifications/initialized` notification
+4. `POST /api/mcp` — call marker methods with `Mcp-Session-Id` header
+
+`ClientRPC` from `http_stream_client` handles this automatically via `async with`.
 
 ### Methods
 

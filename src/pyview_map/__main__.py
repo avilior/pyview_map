@@ -27,7 +27,7 @@ from pyview_map.app import app
 def main():
     print("Starting PyView Map server on http://localhost:8123/map")
     print("Dynamic Map available at    http://localhost:8123/dmap")
-    print("Marker API available at     http://localhost:8123/api/rpc")
+    print("Marker API available at     http://localhost:8123/api/mcp")
 
     app.add_live_view("/map", MapLiveView)
     app.add_live_view("/dmap", DynamicMapLiveView.with_source(APIMarkerSource))

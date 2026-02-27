@@ -1,4 +1,4 @@
-"""mock_client.py — external JSON-RPC client that mirrors MockGenerator behaviour.
+"""mock_client.py — external MCP client that mirrors MockGenerator behaviour.
 
 Run this while the server is up to see markers appear and move on the /dmap page:
 
@@ -10,9 +10,11 @@ import math
 import random
 import uuid
 
-import httpx
+from http_stream_client.jsonrpc.client_sdk import ClientRPC
+from jrpc_common.jrpc_model import JSONRPCRequest
 
-RPC_URL = "http://localhost:8123/api/rpc"
+BASE_URL = "http://localhost:8123/api"
+AUTH_TOKEN = "tok-acme-001"
 
 # Continental US bounding box (same as MockGenerator)
 _LAT = (25.0, 49.0)
@@ -22,15 +24,6 @@ _CALLSIGNS = [
     "Alpha", "Bravo", "Charlie", "Delta", "Echo",
     "Foxtrot", "Golf", "Hotel", "India", "Juliet",
 ]
-
-
-async def rpc(client: httpx.AsyncClient, method: str, params: dict, req_id: int = 1) -> dict:
-    resp = await client.post(
-        RPC_URL,
-        json={"jsonrpc": "2.0", "method": method, "params": params, "id": req_id},
-    )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def _random_latlng() -> list[float]:
@@ -64,7 +57,7 @@ def _advance(marker: dict) -> list[float]:
 async def main() -> None:
     initial_count = 5
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
         # Seed initial markers
         markers: dict[str, dict] = {}
         for i in range(initial_count):
@@ -78,18 +71,20 @@ async def main() -> None:
                 "heading": random.uniform(0, 360),
                 "speed": random.uniform(0.4, 1.2),
             }
-            await rpc(client, "markers.add", {"id": mid, "name": name, "latLng": [lat, lng]}, req_id=i)
+            req = JSONRPCRequest(method="markers.add", params={"id": mid, "name": name, "latLng": [lat, lng]})
+            async for resp in rpc.send_request(req):
+                pass  # consume response
             print(f"  added {name} at ({lat}, {lng})")
 
         print(f"\nSeeded {initial_count} markers. Starting update loop (Ctrl-C to stop)...\n")
 
-        req_id = initial_count
         while True:
             await asyncio.sleep(1.2)
             mid, m = random.choice(list(markers.items()))
             new_latlng = _advance(m)
-            req_id += 1
-            await rpc(client, "markers.update", {"id": mid, "name": m["name"], "latLng": new_latlng}, req_id=req_id)
+            req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng})
+            async for resp in rpc.send_request(req):
+                pass  # consume response
             print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
 
 

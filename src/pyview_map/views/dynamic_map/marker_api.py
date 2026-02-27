@@ -1,35 +1,42 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+
+from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
+from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
 
+
+# -- Register marker methods on the global JRPCService instance -----------
+
+@jrpc_service.request("markers.add")
+def markers_add(id: str, name: str, latLng: list[float]) -> dict:
+    APIMarkerSource.push_add(id, name, latLng)
+    return {"ok": True}
+
+
+@jrpc_service.request("markers.update")
+def markers_update(id: str, name: str, latLng: list[float]) -> dict:
+    APIMarkerSource.push_update(id, name, latLng)
+    return {"ok": True}
+
+
+@jrpc_service.request("markers.delete")
+def markers_delete(id: str) -> dict:
+    APIMarkerSource.push_delete(id)
+    return {"ok": True}
+
+
+@jrpc_service.request("markers.list")
+def markers_list() -> dict:
+    return {"markers": [m.to_dict() for m in APIMarkerSource._markers.values()]}
+
+
+# -- FastAPI sub-app mounted at /api in __main__.py -----------------------
+
 api_app = FastAPI(title="dmap Marker API")
+api_app.include_router(mcp_router)
 
 
-def _ok(req_id, result):
-    return {"jsonrpc": "2.0", "id": req_id, "result": result}
-
-
-def _error(req_id, code, message):
-    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
-
-
-@api_app.post("/rpc")
-async def rpc_endpoint(request: Request):
-    body = await request.json()
-    req_id = body.get("id")
-    method = body.get("method")
-    params = body.get("params") or {}
-
-    if method == "markers.add":
-        APIMarkerSource.push_add(params["id"], params["name"], params["latLng"])
-        return _ok(req_id, {"ok": True})
-    elif method == "markers.update":
-        APIMarkerSource.push_update(params["id"], params["name"], params["latLng"])
-        return _ok(req_id, {"ok": True})
-    elif method == "markers.delete":
-        APIMarkerSource.push_delete(params["id"])
-        return _ok(req_id, {"ok": True})
-    elif method == "markers.list":
-        return _ok(req_id, {"markers": [m.to_dict() for m in APIMarkerSource._markers.values()]})
-    else:
-        return _error(req_id, -32601, f"Method not found: {method}")
+@api_app.get("/health")
+async def health():
+    return {"status": "ok"}

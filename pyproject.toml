@@ -8,7 +8,15 @@ dependencies = [
     "uvicorn>=0.41.0",
     "fastapi>=0.115",
     "httpx>=0.28",
+    "http-stream-transport",
+    "http-stream-client",
+    "jrpc-common",
 ]
+
+[tool.uv.sources]
+http-stream-transport = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/server_pkg" }
+http-stream-client = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/client" }
+jrpc-common = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/jrpc_common" }
 
 [build-system]
 requires = ["hatchling"]
