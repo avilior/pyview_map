@@ -33,7 +33,9 @@ mock-run: mock-stop
 
     open http://localhost:8123/dmap
 
+    echo "Starting client...."
     uv run python examples/mock_client.py
+    echo "Ending client...."
 
 
 # Stop the mock client
