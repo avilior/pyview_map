@@ -50,3 +50,5 @@ dmap: stop
     echo "Waiting for server..."
     until curl -s -o /dev/null http://localhost:8123; do sleep 0.3; done
     open http://localhost:8123/dmap
+
+stop-all: mock-stop stop
