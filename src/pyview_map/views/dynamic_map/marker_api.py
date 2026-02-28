@@ -1,9 +1,12 @@
+import asyncio
+
 from fastapi import FastAPI
 
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
+from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
 
 
 # -- Register marker methods on the global JRPCService instance -----------
@@ -29,6 +32,11 @@ def markers_delete(id: str) -> dict:
 @jrpc_service.request("markers.list")
 def markers_list() -> dict:
     return {"markers": [m.to_dict() for m in APIMarkerSource._markers.values()]}
+
+
+@jrpc_service.request("map.events.subscribe")
+async def map_events_subscribe() -> asyncio.Queue:
+    return EventBroadcaster.subscribe()
 
 
 # -- FastAPI sub-app mounted at /api in __main__.py -----------------------

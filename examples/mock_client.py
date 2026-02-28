@@ -54,10 +54,23 @@ def _advance(marker: dict) -> list[float]:
     return [marker["lat"], marker["lng"]]
 
 
+async def listen_events(rpc: ClientRPC) -> None:
+    """Subscribe to map/marker events and print them as they arrive."""
+    req = JSONRPCRequest(method="map.events.subscribe")
+    async for msg in rpc.send_request(req):
+        if hasattr(msg, "params") and msg.params:
+            p = msg.params
+            print(f"  [event] {p.get('type')}: {p.get('event')} "
+                  f"id={p.get('id', '-')} latLng={p.get('latLng', '-')}")
+
+
 async def main() -> None:
     initial_count = 5
 
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
+        # Start listening for map events in the background
+        event_task = asyncio.create_task(listen_events(rpc))
+
         # Seed initial markers
         markers: dict[str, dict] = {}
         for i in range(initial_count):
@@ -78,14 +91,17 @@ async def main() -> None:
 
         print(f"\nSeeded {initial_count} markers. Starting update loop (Ctrl-C to stop)...\n")
 
-        while True:
-            await asyncio.sleep(1.2)
-            mid, m = random.choice(list(markers.items()))
-            new_latlng = _advance(m)
-            req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng})
-            async for resp in rpc.send_request(req):
-                pass  # consume response
-            print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
+        try:
+            while True:
+                await asyncio.sleep(1.2)
+                mid, m = random.choice(list(markers.items()))
+                new_latlng = _advance(m)
+                req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng})
+                async for resp in rpc.send_request(req):
+                    pass  # consume response
+                print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
+        finally:
+            event_task.cancel()
 
 
 if __name__ == "__main__":

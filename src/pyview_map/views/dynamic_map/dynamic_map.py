@@ -8,6 +8,7 @@ from pyview.stream import Stream
 from pyview.vendor.ibis import filters
 
 from .dmarker import DMarker
+from .event_broadcaster import EventBroadcaster
 
 
 @filters.register
@@ -136,6 +137,7 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
             if latlng:
                 detail += f" @ ({latlng[0]:.2f}, {latlng[1]:.2f})"
             socket.context.last_marker_event = detail
+            EventBroadcaster.broadcast({"type": "marker-event", **payload})
 
         elif event == "map-event":
             evt    = payload.get("event", "?")
@@ -147,3 +149,4 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
             if zoom is not None:
                 detail += f" zoom={zoom}"
             socket.context.last_map_event = detail
+            EventBroadcaster.broadcast({"type": "map-event", **payload})
