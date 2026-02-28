@@ -1,6 +1,6 @@
 import asyncio
 
-from pyview_map.views.dynamic_map.mock_generator import DMarker
+from pyview_map.views.dynamic_map.dmarker import DMarker
 
 
 class APIMarkerSource:

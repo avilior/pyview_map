@@ -7,7 +7,7 @@ from pyview.events import InfoEvent
 from pyview.stream import Stream
 from pyview.vendor.ibis import filters
 
-from .mock_generator import DMarker
+from .dmarker import DMarker
 
 
 @filters.register

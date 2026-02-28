@@ -1,7 +1,8 @@
 import math
 import random
 import uuid
-from dataclasses import dataclass, field
+
+from .dmarker import DMarker
 
 
 _CALLSIGNS = [
@@ -13,26 +14,6 @@ _CALLSIGNS = [
 # Continental US bounding box
 _LAT = (25.0, 49.0)
 _LNG = (-125.0, -66.0)
-
-
-@dataclass
-class DMarker:
-    id: str
-    name: str
-    lat_lng: list[float]
-    heading: float = field(default_factory=lambda: random.uniform(0, 360))
-    speed: float = field(default_factory=lambda: random.uniform(0.4, 1.2))
-
-    @property
-    def lat(self) -> float:
-        return self.lat_lng[0]
-
-    @property
-    def lng(self) -> float:
-        return self.lat_lng[1]
-
-    def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "latLng": self.lat_lng}
 
 
 def _random_latlng() -> list[float]:
