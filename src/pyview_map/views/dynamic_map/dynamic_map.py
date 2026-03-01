@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -107,6 +108,7 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
             markers=Stream(self._source.markers, name="markers")
         )
         if socket.connected:
+            self._cmd_queue = CommandQueue.subscribe()
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicMapContext]):
@@ -130,8 +132,12 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                 update_only=True,
             )
 
-        # Drain pending map commands
-        while (cmd := CommandQueue.pop()) is not None:
+        # Drain pending map commands from this view's queue
+        while True:
+            try:
+                cmd = self._cmd_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
             event_name, payload = cmd.to_push_event()
             await socket.push_event(event_name, payload)
 

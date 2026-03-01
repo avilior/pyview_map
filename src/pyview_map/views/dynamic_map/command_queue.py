@@ -6,20 +6,32 @@ from .map_events import MapCommand
 
 
 class CommandQueue:
-    """Class-level queue for map commands from external clients.
+    """Fan-out queue for map commands from external clients.
 
-    JSON-RPC handlers push commands; the LiveView tick drains them.
+    Each LiveView connection subscribes and gets its own bounded queue.
+    JSON-RPC handlers push commands; push() fans out to all subscribers.
+    Slow/dead subscribers are auto-cleaned when their queue fills up.
     """
 
-    _queue: asyncio.Queue[MapCommand] = asyncio.Queue()
+    _subscribers: set[asyncio.Queue[MapCommand]] = set()
+
+    @classmethod
+    def subscribe(cls) -> asyncio.Queue[MapCommand]:
+        q: asyncio.Queue[MapCommand] = asyncio.Queue(maxsize=256)
+        cls._subscribers.add(q)
+        return q
+
+    @classmethod
+    def unsubscribe(cls, q: asyncio.Queue[MapCommand]) -> None:
+        cls._subscribers.discard(q)
 
     @classmethod
     def push(cls, cmd: MapCommand) -> None:
-        cls._queue.put_nowait(cmd)
-
-    @classmethod
-    def pop(cls) -> MapCommand | None:
-        try:
-            return cls._queue.get_nowait()
-        except asyncio.QueueEmpty:
-            return None
+        dead: list[asyncio.Queue[MapCommand]] = []
+        for q in cls._subscribers:
+            try:
+                q.put_nowait(cmd)
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            cls._subscribers.discard(q)
