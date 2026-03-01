@@ -11,7 +11,7 @@ import random
 import uuid
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
-from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse
+from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"
@@ -56,17 +56,35 @@ def _advance(marker: dict) -> list[float]:
 
 async def listen_events(rpc: ClientRPC) -> None:
     """Subscribe to map/marker events and print them as they arrive."""
+    # This will trigger the service to open a channel which will be used to receive Notification events
+    # Upon receiving the Response to the request the channel will be closed.
     req = JSONRPCRequest(method="map.events.subscribe")
     async for msg in rpc.send_request(req):
-        if hasattr(msg, "params") and msg.params:
-            p = msg.params
-            etype = p.get("type", "?")
-            if etype == "marker-op":
-                print(f"  [marker-op] {p.get('op')} id={p.get('id')} "
-                      f"name={p.get('name', '-')} latLng={p.get('latLng', '-')}")
-            else:
-                print(f"  [event] {etype}: {p.get('event')} "
-                      f"id={p.get('id', '-')} latLng={p.get('latLng', '-')}")
+
+        match msg:
+            case JSONRPCNotification():
+                print(f"[RX {msg.method}]:")
+                params = msg.params
+                etype = params.get("type", "?")
+                match etype:
+                    case "marker-op":
+                        print(f"  [{etype}] op: {params.get('op')} id={params.get('id')} "
+                              f"name={params.get('name', '-')} latLng={params.get('latLng', '-')}")
+                    case "map-event":
+                        print(f"  [{etype}] : {params.get('event')} "
+                              f"id={params.get('id', '-')} latLng={params.get('latLng', '-')}")
+                    case _:
+                        print(f"  [event] {etype}: {params}")
+
+            case JSONRPCResponse():
+                # this would indicate the end of the channel.
+                print(f"Response received: {msg} END OF CHANNEL")
+            case JSONRPCErrorResponse():
+                print(f"Error response received: {msg}")
+                assert False, f"Error response received: {msg}"
+            case _:
+                print(f"Unknown message type: {type(msg)}")
+                assert False, f"Unexpected message type: {type(msg)}"
 
 
 async def main() -> None:
