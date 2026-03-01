@@ -1,6 +1,7 @@
 import asyncio
 
 from pyview_map.views.dynamic_map.dmarker import DMarker
+from pyview_map.views.dynamic_map.latlng import LatLng
 
 
 class APIMarkerSource:
@@ -24,15 +25,15 @@ class APIMarkerSource:
             return {"op": "noop"}
 
     @classmethod
-    def push_add(cls, id: str, name: str, lat_lng: list[float]) -> None:
+    def push_add(cls, id: str, name: str, lat_lng: LatLng) -> None:
         cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng)
-        cls._queue.put_nowait({"op": "add", "id": id, "name": name, "latLng": lat_lng})
+        cls._queue.put_nowait({"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list()})
 
     @classmethod
-    def push_update(cls, id: str, name: str, lat_lng: list[float]) -> None:
+    def push_update(cls, id: str, name: str, lat_lng: LatLng) -> None:
         if id in cls._markers:
             cls._markers[id].lat_lng = lat_lng
-        cls._queue.put_nowait({"op": "update", "id": id, "name": name, "latLng": lat_lng})
+        cls._queue.put_nowait({"op": "update", "id": id, "name": name, "latLng": lat_lng.to_list()})
 
     @classmethod
     def push_delete(cls, id: str) -> None:

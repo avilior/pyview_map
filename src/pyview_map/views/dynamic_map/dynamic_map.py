@@ -7,8 +7,10 @@ from pyview.events import InfoEvent
 from pyview.stream import Stream
 from pyview.vendor.ibis import filters
 
+from .command_queue import CommandQueue
 from .dmarker import DMarker
 from .event_broadcaster import EventBroadcaster
+from .latlng import LatLng
 from .map_events import MapEvent, MarkerEvent
 
 
@@ -115,44 +117,52 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
         op = update["op"]
 
         if op == "noop":
-            return
-
-        if op == "add":
+            pass
+        elif op == "add":
             socket.context.markers.insert(
-                DMarker(id=update["id"], name=update["name"], lat_lng=update["latLng"])
+                DMarker(id=update["id"], name=update["name"], lat_lng=LatLng.from_list(update["latLng"]))
             )
         elif op == "delete":
             socket.context.markers.delete_by_id(f"markers-{update['id']}")
         elif op == "update":
             socket.context.markers.insert(
-                DMarker(id=update["id"], name=update["name"], lat_lng=update["latLng"]),
+                DMarker(id=update["id"], name=update["name"], lat_lng=LatLng.from_list(update["latLng"])),
                 update_only=True,
             )
 
+        # Drain pending map commands
+        while (cmd := CommandQueue.pop()) is not None:
+            event_name, payload = cmd.to_push_event()
+            await socket.push_event(event_name, payload)
+
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapContext]):
         if event == "marker-event":
+            raw_ll = payload.get("latLng", [])
+            ll = LatLng.from_list(raw_ll) if raw_ll else LatLng(0, 0)
             me = MarkerEvent(
                 event=payload.get("event", "?"),
                 id=payload.get("id", ""),
                 name=payload.get("name", payload.get("id", "?")),
-                latLng=payload.get("latLng", []),
+                latLng=ll,
             )
             detail = f"{me.event} → {me.name}"
             if me.latLng:
-                detail += f" @ ({me.latLng[0]:.2f}, {me.latLng[1]:.2f})"
+                detail += f" @ ({me.latLng.lat:.2f}, {me.latLng.lng:.2f})"
             socket.context.last_marker_event = detail
             EventBroadcaster.broadcast(me)
 
         elif event == "map-event":
+            raw_center = payload.get("center", [])
+            raw_ll = payload.get("latLng")
             me = MapEvent(
                 event=payload.get("event", "?"),
-                center=payload.get("center", []),
+                center=LatLng.from_list(raw_center) if raw_center else LatLng(0, 0),
                 zoom=payload.get("zoom", 0),
-                latLng=payload.get("latLng"),
+                latLng=LatLng.from_list(raw_ll) if raw_ll else None,
             )
             detail = me.event
             if me.center:
-                detail += f" center=({me.center[0]:.2f}, {me.center[1]:.2f})"
+                detail += f" center=({me.center.lat:.2f}, {me.center.lng:.2f})"
             if me.zoom is not None:
                 detail += f" zoom={me.zoom}"
             socket.context.last_map_event = detail

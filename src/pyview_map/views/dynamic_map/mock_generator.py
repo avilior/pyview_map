@@ -3,6 +3,7 @@ import random
 import uuid
 
 from .dmarker import DMarker
+from .latlng import LatLng
 
 
 _CALLSIGNS = [
@@ -16,11 +17,11 @@ _LAT = (25.0, 49.0)
 _LNG = (-125.0, -66.0)
 
 
-def _random_latlng() -> list[float]:
-    return [round(random.uniform(*_LAT), 4), round(random.uniform(*_LNG), 4)]
+def _random_latlng() -> LatLng:
+    return LatLng(round(random.uniform(*_LAT), 4), round(random.uniform(*_LNG), 4))
 
 
-def _advance(marker: DMarker) -> list[float]:
+def _advance(marker: DMarker) -> LatLng:
     """Move marker along its heading with slight drift; bounce off US bounds."""
     angle = math.radians(marker.heading)
     dlat = marker.speed * math.cos(angle) * random.uniform(0.6, 1.4)
@@ -29,8 +30,8 @@ def _advance(marker: DMarker) -> list[float]:
     # Gradual heading drift
     marker.heading = (marker.heading + random.uniform(-20, 20)) % 360
 
-    lat = marker.lat_lng[0] + dlat
-    lng = marker.lat_lng[1] + dlng
+    lat = marker.lat_lng.lat + dlat
+    lng = marker.lat_lng.lng + dlng
 
     # Bounce off bounds
     if not _LAT[0] <= lat <= _LAT[1]:
@@ -40,7 +41,7 @@ def _advance(marker: DMarker) -> list[float]:
         marker.heading = (360 - marker.heading) % 360
         lng = max(_LNG[0], min(_LNG[1], lng))
 
-    marker.lat_lng = [round(lat, 4), round(lng, 4)]
+    marker.lat_lng = LatLng(round(lat, 4), round(lng, 4))
     return marker.lat_lng
 
 
@@ -79,11 +80,11 @@ class MockGenerator:
         if op == "move":
             marker = random.choice(list(self._markers.values()))
             new_latlng = _advance(marker)
-            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng}
+            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng.to_list()}
 
         if op == "add":
             marker = self._create_marker()
-            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng}
+            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng.to_list()}
 
         # delete
         marker = random.choice(list(self._markers.values()))

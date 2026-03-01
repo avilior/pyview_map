@@ -58,6 +58,13 @@ def _advance(marker: dict) -> list[float]:
     return [marker["lat"], marker["lng"]]
 
 
+async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None:
+    """Fire a JSON-RPC request and consume the response."""
+    req = JSONRPCRequest(method=method, params=params or {})
+    async for resp in rpc.send_request(req):
+        pass
+
+
 async def listen_events(rpc: ClientRPC) -> None:
     """Subscribe to map/marker events and print them as they arrive."""
     # This will trigger the service to open a channel which will be used to receive Notification events
@@ -71,14 +78,17 @@ async def listen_events(rpc: ClientRPC) -> None:
                 evt = parse_event(msg.params)
                 match evt:
                     case MarkerOpEvent():
+                        ll = f"({evt.latLng.lat}, {evt.latLng.lng})" if evt.latLng else "-"
                         print(f"  [marker-op] {evt.op} id={evt.id} "
-                              f"name={evt.name or '-'} latLng={evt.latLng or '-'}")
+                              f"name={evt.name or '-'} latLng={ll}")
                     case MarkerEvent():
                         print(f"  [marker-event] {evt.event} id={evt.id} "
-                              f"name={evt.name} latLng={evt.latLng}")
+                              f"name={evt.name} latLng=({evt.latLng.lat}, {evt.latLng.lng})")
                     case MapEvent():
-                        print(f"  [map-event] {evt.event} center={evt.center} "
-                              f"zoom={evt.zoom} latLng={evt.latLng or '-'}")
+                        ll = f"({evt.latLng.lat}, {evt.latLng.lng})" if evt.latLng else "-"
+                        print(f"  [map-event] {evt.event} "
+                              f"center=({evt.center.lat}, {evt.center.lng}) "
+                              f"zoom={evt.zoom} latLng={ll}")
 
             case JSONRPCResponse():
                 # this would indicate the end of the channel.
@@ -89,6 +99,37 @@ async def listen_events(rpc: ClientRPC) -> None:
             case _:
                 print(f"Unknown message type: {type(msg)}")
                 assert False, f"Unexpected message type: {type(msg)}"
+
+
+async def run_command_demo(rpc: ClientRPC, markers: dict[str, dict]) -> None:
+    """Demonstrate remote map control commands."""
+    print("\n--- Command demo ---")
+
+    # Pick first marker
+    first_id, first_m = next(iter(markers.items()))
+    lat, lng = first_m["lat"], first_m["lng"]
+
+    # Fly to the first marker
+    print(f"  flyTo {first_m['name']} at ({lat}, {lng}) zoom=8")
+    await _send(rpc, "map.flyTo", {"latLng": [lat, lng], "zoom": 8})
+    await asyncio.sleep(3)
+
+    # Highlight it
+    print(f"  highlightMarker {first_id}")
+    await _send(rpc, "map.highlightMarker", {"id": first_id})
+    await asyncio.sleep(2)
+
+    # Zoom to level 6
+    print("  setZoom 6")
+    await _send(rpc, "map.setZoom", {"zoom": 6})
+    await asyncio.sleep(2)
+
+    # Reset to US overview
+    print("  resetView")
+    await _send(rpc, "map.resetView")
+    await asyncio.sleep(2)
+
+    print("--- Command demo complete ---\n")
 
 
 async def main() -> None:
@@ -118,7 +159,12 @@ async def main() -> None:
                 pass  # consume response
             print(f"  added {name} at ({lat}, {lng})")
 
-        print(f"\nSeeded {initial_count} markers. Starting update loop (Ctrl-C to stop)...\n")
+        print(f"\nSeeded {initial_count} markers.")
+
+        # Run the command demo
+        await run_command_demo(rpc, markers)
+
+        print("Starting update loop (Ctrl-C to stop)...\n")
 
         try:
             while True:

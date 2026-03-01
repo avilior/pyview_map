@@ -96,6 +96,18 @@ window.Hooks.DynamicMap = {
       });
     });
 
+    // -- Map command handlers from server push_event -------------------------
+    this.handleEvent("setView", ({latLng, zoom}) => _map.setView(latLng, zoom));
+    this.handleEvent("flyTo", ({latLng, zoom}) => _map.flyTo(latLng, zoom));
+    this.handleEvent("fitBounds", ({corner1, corner2}) => _map.fitBounds([corner1, corner2]));
+    this.handleEvent("flyToBounds", ({corner1, corner2}) => _map.flyToBounds([corner1, corner2]));
+    this.handleEvent("setZoom", ({zoom}) => _map.setZoom(zoom));
+    this.handleEvent("resetView", () => _map.setView([39.5, -98.35], 4));
+    this.handleEvent("highlightMarker", ({id}) => {
+      const marker = _markers.get(`markers-${id}`);
+      if (marker) { _map.panTo(marker.getLatLng()); marker.openTooltip(); }
+    });
+
     // mousemove — throttled to at most once per second
     let _lastMove = 0;
     _map.on("mousemove", (e) => {
