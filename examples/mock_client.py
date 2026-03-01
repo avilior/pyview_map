@@ -11,7 +11,7 @@ import random
 import uuid
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
-from jrpc_common.jrpc_model import JSONRPCRequest
+from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse
 
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"
@@ -60,14 +60,21 @@ async def listen_events(rpc: ClientRPC) -> None:
     async for msg in rpc.send_request(req):
         if hasattr(msg, "params") and msg.params:
             p = msg.params
-            print(f"  [event] {p.get('type')}: {p.get('event')} "
-                  f"id={p.get('id', '-')} latLng={p.get('latLng', '-')}")
+            etype = p.get("type", "?")
+            if etype == "marker-op":
+                print(f"  [marker-op] {p.get('op')} id={p.get('id')} "
+                      f"name={p.get('name', '-')} latLng={p.get('latLng', '-')}")
+            else:
+                print(f"  [event] {etype}: {p.get('event')} "
+                      f"id={p.get('id', '-')} latLng={p.get('latLng', '-')}")
 
 
 async def main() -> None:
-    initial_count = 5
+
+    initial_count = 10
 
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
+
         # Start listening for map events in the background
         event_task = asyncio.create_task(listen_events(rpc))
 
@@ -98,8 +105,21 @@ async def main() -> None:
                 new_latlng = _advance(m)
                 req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng})
                 async for resp in rpc.send_request(req):
-                    pass  # consume response
-                print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
+                    if resp.id != req.id:
+                        print(f"  ERROR: unexpected response id {resp.id} != {req.id}")
+                        break
+                    if isinstance(resp, JSONRPCError):
+                        print(f"  ERROR: {resp.error}")
+                        break
+
+                    # Cast to JSONRPCResponse to access result attribute
+                    if isinstance(resp, JSONRPCResponse):
+                        result = resp.result
+                        if result and not result.get('ok', True):
+                            print(f"  ERROR: unexpected result {result}")
+
+                    print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
+
         finally:
             event_task.cancel()
 

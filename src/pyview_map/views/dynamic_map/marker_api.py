@@ -14,18 +14,21 @@ from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
 @jrpc_service.request("markers.add")
 def markers_add(id: str, name: str, latLng: list[float]) -> dict:
     APIMarkerSource.push_add(id, name, latLng)
+    EventBroadcaster.broadcast({"type": "marker-op", "op": "add", "id": id, "name": name, "latLng": latLng})
     return {"ok": True}
 
 
 @jrpc_service.request("markers.update")
 def markers_update(id: str, name: str, latLng: list[float]) -> dict:
     APIMarkerSource.push_update(id, name, latLng)
+    EventBroadcaster.broadcast({"type": "marker-op", "op": "update", "id": id, "name": name, "latLng": latLng})
     return {"ok": True}
 
 
 @jrpc_service.request("markers.delete")
 def markers_delete(id: str) -> dict:
     APIMarkerSource.push_delete(id)
+    EventBroadcaster.broadcast({"type": "marker-op", "op": "delete", "id": id})
     return {"ok": True}
 
 
