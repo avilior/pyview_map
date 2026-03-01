@@ -35,13 +35,16 @@ src/pyview_map/
         ├── dynamic_map.py        # DynamicMapLiveView (generic) + MarkerSource protocol
         ├── dynamic_map.html      # phx-update="stream" sentinel divs + phx-update="ignore" map
         ├── dynamic_map.css
+        ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
+        ├── dmarker.py            # DMarker dataclass (uses LatLng)
         ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
         ├── api_marker_source.py  # APIMarkerSource — MarkerSource backed by asyncio.Queue (API-driven)
         ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
-        ├── map_events.py         # Typed event dataclasses (MarkerOpEvent, MarkerEvent, MapEvent)
+        ├── map_events.py         # Typed event/command dataclasses + parse_event()
+        ├── command_queue.py      # CommandQueue — class-level queue for map commands
         ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
         └── static/
-            └── dynamic_map.js    # Hooks.DynamicMap (map init) + Hooks.DMarkItem (lifecycle)
+            └── dynamic_map.js    # Hooks.DynamicMap (map init + command handlers) + Hooks.DMarkItem
 examples/
 └── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
 ```
@@ -142,12 +145,13 @@ markers come from. Implement the `MarkerSource` protocol and register it with
 
 ```python
 from pyview_map.views.dynamic_map.dynamic_map import DMarker, MarkerSource
+from pyview_map.views.dynamic_map.latlng import LatLng
 
 class MySource:                          # no need to inherit — duck typing
     @property
     def markers(self) -> list[DMarker]:
         """Called once on mount to populate the initial map state."""
-        return [DMarker(id="1", name="HQ", lat_lng=[40.7, -74.0])]
+        return [DMarker(id="1", name="HQ", lat_lng=LatLng(40.7, -74.0))]
 
     def next_update(self) -> dict:
         """Called on every tick. Return one operation."""
@@ -157,6 +161,10 @@ class MySource:                          # no need to inherit — duck typing
         # {"op": "noop"}   ← return this when there is nothing to do this tick
         return {"op": "update", "id": "1", "name": "HQ", "latLng": [40.71, -74.01]}
 ```
+
+> **Note:** `DMarker.lat_lng` is a `LatLng` dataclass internally, but `next_update()`
+> returns plain `[lat, lng]` lists in its dict (the wire format). The LiveView converts
+> lists to `LatLng` at the boundary.
 
 ### Registering in __main__.py
 
@@ -218,6 +226,8 @@ Clients must complete the MCP lifecycle before calling marker methods:
 
 ### Methods
 
+#### Marker methods
+
 | Method | Params | Effect |
 |---|---|---|
 | `markers.add` | `id`, `name`, `latLng` | Add marker; enqueue `add` op; broadcast `MarkerOpEvent` |
@@ -225,6 +235,25 @@ Clients must complete the MCP lifecycle before calling marker methods:
 | `markers.delete` | `id` | Remove marker; enqueue `delete` op; broadcast `MarkerOpEvent` |
 | `markers.list` | — | Return current `_markers` dict |
 | `map.events.subscribe` | — | Returns `asyncio.Queue` → SSE stream of `JSONRPCNotification` events |
+
+#### Map command methods
+
+These let external clients control the browser's Leaflet map. Each method pushes
+a command to `CommandQueue`; the LiveView tick drains the queue and calls
+`socket.push_event()`, which triggers `handleEvent` in `dynamic_map.js`.
+
+| Method | Params | JS effect |
+|---|---|---|
+| `map.setView` | `latLng`, `zoom` | `_map.setView(latLng, zoom)` |
+| `map.flyTo` | `latLng`, `zoom` | `_map.flyTo(latLng, zoom)` (animated) |
+| `map.fitBounds` | `corner1`, `corner2` | `_map.fitBounds([corner1, corner2])` |
+| `map.flyToBounds` | `corner1`, `corner2` | `_map.flyToBounds([corner1, corner2])` (animated) |
+| `map.setZoom` | `zoom` | `_map.setZoom(zoom)` |
+| `map.resetView` | — | Reset to US overview `[39.5, -98.35]` zoom 4 |
+| `map.highlightMarker` | `id` | Pan to marker and open its tooltip |
+
+All `latLng`/`corner` params are `[lat, lng]` arrays on the wire; converted to
+`LatLng` at the API boundary in `marker_api.py`.
 
 `APIMarkerSource` uses **class-level** state (`_queue`, `_markers`) so all LiveView
 connections share the same queue — every connected browser sees every update.
@@ -236,6 +265,42 @@ LiveView processes the `phx-update="stream"` container before the
 `phx-update="ignore"` wrapper). To handle this, `dynamic_map.js` queues pending
 hooks in `_pending[]` and flushes them inside `DynamicMap.mounted()` after `_map`
 is created.
+
+## LatLng type
+
+All lat/lng values use the `LatLng` dataclass (`latlng.py`) internally.
+Wire format (JSON-RPC params, JS payloads) remains `[lat, lng]` arrays.
+
+```python
+from pyview_map.views.dynamic_map.latlng import LatLng
+
+ll = LatLng(39.5, -98.35)
+ll.to_list()                  # → [39.5, -98.35]
+LatLng.from_list([39.5, -98.35])  # → LatLng(lat=39.5, lng=-98.35)
+```
+
+Conversion happens at boundaries:
+- **API → internal**: `marker_api.py` calls `LatLng.from_list()` on wire params
+- **Browser → internal**: `dynamic_map.py` `handle_event()` converts payload lists
+- **Internal → wire**: `to_dict()` / `to_push_event()` call `.to_list()`
+
+## Map commands (client → browser)
+
+External clients can control the browser map via `map.*` JSON-RPC methods.
+The flow is:
+
+1. **Client** calls `map.flyTo`, `map.setZoom`, etc. via JSON-RPC
+2. **`marker_api.py`** handler constructs a command dataclass and pushes to `CommandQueue`
+3. **`dynamic_map.py`** `handle_info()` drains `CommandQueue` on every tick, calling
+   `socket.push_event()` for each command
+4. **`dynamic_map.js`** `handleEvent` receivers call the corresponding Leaflet method
+
+Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `FlyToCmd`,
+`FitBoundsCmd`, `FlyToBoundsCmd`, `SetZoomCmd`, `ResetViewCmd`, `HighlightMarkerCmd`).
+Each has `to_push_event() -> tuple[str, dict]`.
+
+`CommandQueue` in `command_queue.py` uses class-level `asyncio.Queue` (same
+singleton pattern as `APIMarkerSource` and `EventBroadcaster`).
 
 ## Event streaming to external clients
 
@@ -263,6 +328,7 @@ Each has `to_dict()` for serialization; `parse_event()` reconstructs them
 from a notification params dict.
 
 ```python
+from pyview_map.views.dynamic_map.latlng import LatLng
 from pyview_map.views.dynamic_map.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, BroadcastEvent, parse_event,
 )
@@ -270,22 +336,22 @@ from pyview_map.views.dynamic_map.map_events import (
 
 **`MarkerOpEvent`** — marker CRUD from the API:
 ```python
-MarkerOpEvent(op="add", id="abc", name="Alpha-01", latLng=[39.5, -98.3])
-MarkerOpEvent(op="update", id="abc", name="Alpha-01", latLng=[40.0, -97.0])
+MarkerOpEvent(op="add", id="abc", name="Alpha-01", latLng=LatLng(39.5, -98.3))
+MarkerOpEvent(op="update", id="abc", name="Alpha-01", latLng=LatLng(40.0, -97.0))
 MarkerOpEvent(op="delete", id="abc")
-# to_dict() → {"type": "marker-op", "op": ..., "id": ..., "name": ..., "latLng": ...}
+# to_dict() → {"type": "marker-op", "op": ..., "id": ..., "name": ..., "latLng": [lat, lng]}
 ```
 
 **`MarkerEvent`** — browser marker interaction:
 ```python
-MarkerEvent(event="click", id="markers-abc", name="Alpha-01", latLng=[39.5, -98.3])
-# to_dict() → {"type": "marker-event", "event": ..., "id": ..., "name": ..., "latLng": ...}
+MarkerEvent(event="click", id="markers-abc", name="Alpha-01", latLng=LatLng(39.5, -98.3))
+# to_dict() → {"type": "marker-event", "event": ..., "id": ..., "name": ..., "latLng": [lat, lng]}
 ```
 
 **`MapEvent`** — browser map interaction:
 ```python
-MapEvent(event="zoomend", center=[39.5, -98.3], zoom=6, latLng=None)
-# to_dict() → {"type": "map-event", "event": ..., "center": ..., "zoom": ..., "latLng": ...}
+MapEvent(event="zoomend", center=LatLng(39.5, -98.3), zoom=6, latLng=None)
+# to_dict() → {"type": "map-event", "event": ..., "center": [lat, lng], "zoom": ..., "latLng": ...}
 ```
 
 ### Client subscription example
