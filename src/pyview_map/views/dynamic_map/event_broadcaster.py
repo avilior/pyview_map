@@ -2,6 +2,8 @@ import asyncio
 
 from jrpc_common.jrpc_model import JSONRPCNotification
 
+from .map_events import BroadcastEvent
+
 
 class EventBroadcaster:
     """Broadcasts map/marker events from the LiveView to SSE subscribers.
@@ -23,16 +25,15 @@ class EventBroadcaster:
         cls._subscribers.discard(q)
 
     @classmethod
-    def broadcast(cls, event: dict) -> None:
+    def broadcast(cls, event: BroadcastEvent) -> None:
         dead: list[asyncio.Queue] = []
+        notification = JSONRPCNotification(
+            method="notifications/map.event",
+            params=event.to_dict(),
+        )
         for q in cls._subscribers:
             try:
-                q.put_nowait(
-                    JSONRPCNotification(
-                        method="notifications/map.event",
-                        params=event,
-                    )
-                )
+                q.put_nowait(notification)
             except asyncio.QueueFull:
                 dead.append(q)
         for q in dead:

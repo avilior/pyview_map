@@ -9,6 +9,7 @@ from pyview.vendor.ibis import filters
 
 from .dmarker import DMarker
 from .event_broadcaster import EventBroadcaster
+from .map_events import MapEvent, MarkerEvent
 
 
 @filters.register
@@ -130,23 +131,29 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapContext]):
         if event == "marker-event":
-            evt    = payload.get("event", "?")
-            name   = payload.get("name", payload.get("id", "?"))
-            latlng = payload.get("latLng")
-            detail = f"{evt} → {name}"
-            if latlng:
-                detail += f" @ ({latlng[0]:.2f}, {latlng[1]:.2f})"
+            me = MarkerEvent(
+                event=payload.get("event", "?"),
+                id=payload.get("id", ""),
+                name=payload.get("name", payload.get("id", "?")),
+                latLng=payload.get("latLng", []),
+            )
+            detail = f"{me.event} → {me.name}"
+            if me.latLng:
+                detail += f" @ ({me.latLng[0]:.2f}, {me.latLng[1]:.2f})"
             socket.context.last_marker_event = detail
-            EventBroadcaster.broadcast({"type": "marker-event", **payload})
+            EventBroadcaster.broadcast(me)
 
         elif event == "map-event":
-            evt    = payload.get("event", "?")
-            center = payload.get("center")
-            zoom   = payload.get("zoom")
-            detail = evt
-            if center:
-                detail += f" center=({center[0]:.2f}, {center[1]:.2f})"
-            if zoom is not None:
-                detail += f" zoom={zoom}"
+            me = MapEvent(
+                event=payload.get("event", "?"),
+                center=payload.get("center", []),
+                zoom=payload.get("zoom", 0),
+                latLng=payload.get("latLng"),
+            )
+            detail = me.event
+            if me.center:
+                detail += f" center=({me.center[0]:.2f}, {me.center[1]:.2f})"
+            if me.zoom is not None:
+                detail += f" zoom={me.zoom}"
             socket.context.last_map_event = detail
-            EventBroadcaster.broadcast({"type": "map-event", **payload})
+            EventBroadcaster.broadcast(me)

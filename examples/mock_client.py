@@ -13,6 +13,10 @@ import uuid
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
+from pyview_map.views.dynamic_map.map_events import (
+    MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
+)
+
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"
 
@@ -64,17 +68,17 @@ async def listen_events(rpc: ClientRPC) -> None:
         match msg:
             case JSONRPCNotification():
                 print(f"[RX {msg.method}]:")
-                params = msg.params
-                etype = params.get("type", "?")
-                match etype:
-                    case "marker-op":
-                        print(f"  [{etype}] op: {params.get('op')} id={params.get('id')} "
-                              f"name={params.get('name', '-')} latLng={params.get('latLng', '-')}")
-                    case "map-event":
-                        print(f"  [{etype}] : {params.get('event')} "
-                              f"id={params.get('id', '-')} latLng={params.get('latLng', '-')}")
-                    case _:
-                        print(f"  [event] {etype}: {params}")
+                evt = parse_event(msg.params)
+                match evt:
+                    case MarkerOpEvent():
+                        print(f"  [marker-op] {evt.op} id={evt.id} "
+                              f"name={evt.name or '-'} latLng={evt.latLng or '-'}")
+                    case MarkerEvent():
+                        print(f"  [marker-event] {evt.event} id={evt.id} "
+                              f"name={evt.name} latLng={evt.latLng}")
+                    case MapEvent():
+                        print(f"  [map-event] {evt.event} center={evt.center} "
+                              f"zoom={evt.zoom} latLng={evt.latLng or '-'}")
 
             case JSONRPCResponse():
                 # this would indicate the end of the channel.
