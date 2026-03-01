@@ -2,6 +2,8 @@
 
 A PyView LiveView demo app showing interactive Leaflet.js maps.
 
+**Claude Code memory**: `~/.claude/projects/-Users-avilior-developer-python-pyview-map/memory/MEMORY.md`
+
 ## Running
 
 ```bash
