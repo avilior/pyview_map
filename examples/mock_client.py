@@ -93,7 +93,7 @@ async def listen_events(rpc: ClientRPC) -> None:
 
 async def main() -> None:
 
-    initial_count = 10
+    initial_count = 1000
 
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
 

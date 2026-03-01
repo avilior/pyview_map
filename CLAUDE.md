@@ -36,6 +36,8 @@ src/pyview_map/
         ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
         ├── api_marker_source.py  # APIMarkerSource — MarkerSource backed by asyncio.Queue (API-driven)
         ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
+        ├── map_events.py         # Typed event dataclasses (MarkerOpEvent, MarkerEvent, MapEvent)
+        ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
         └── static/
             └── dynamic_map.js    # Hooks.DynamicMap (map init) + Hooks.DMarkItem (lifecycle)
 examples/
@@ -216,10 +218,11 @@ Clients must complete the MCP lifecycle before calling marker methods:
 
 | Method | Params | Effect |
 |---|---|---|
-| `markers.add` | `id`, `name`, `latLng` | Add marker; enqueue `add` op |
-| `markers.update` | `id`, `name`, `latLng` | Move/rename marker; enqueue `update` op |
-| `markers.delete` | `id` | Remove marker; enqueue `delete` op |
+| `markers.add` | `id`, `name`, `latLng` | Add marker; enqueue `add` op; broadcast `MarkerOpEvent` |
+| `markers.update` | `id`, `name`, `latLng` | Move/rename marker; enqueue `update` op; broadcast `MarkerOpEvent` |
+| `markers.delete` | `id` | Remove marker; enqueue `delete` op; broadcast `MarkerOpEvent` |
 | `markers.list` | — | Return current `_markers` dict |
+| `map.events.subscribe` | — | Returns `asyncio.Queue` → SSE stream of `JSONRPCNotification` events |
 
 `APIMarkerSource` uses **class-level** state (`_queue`, `_markers`) so all LiveView
 connections share the same queue — every connected browser sees every update.
@@ -231,3 +234,72 @@ LiveView processes the `phx-update="stream"` container before the
 `phx-update="ignore"` wrapper). To handle this, `dynamic_map.js` queues pending
 hooks in `_pending[]` and flushes them inside `DynamicMap.mounted()` after `_map`
 is created.
+
+## Event streaming to external clients
+
+Browser map/marker events and API marker operations are broadcast to external
+clients via SSE using `EventBroadcaster` and the `map.events.subscribe` method.
+
+### Architecture
+
+1. **Browser → LiveView** — `handle_event()` in `dynamic_map.py` receives
+   `marker-event` and `map-event` from Leaflet hooks, constructs typed event
+   dataclasses, and calls `EventBroadcaster.broadcast()`.
+2. **API → broadcast** — `markers.add/update/delete` handlers in `marker_api.py`
+   broadcast `MarkerOpEvent` after each mutation.
+3. **EventBroadcaster** — maintains a set of subscriber `asyncio.Queue`s (bounded,
+   maxsize=256). `broadcast()` is non-blocking (`put_nowait`); slow consumers are
+   dropped. The `JSONRPCNotification` is built once and shared across all subscribers.
+4. **SSE delivery** — `map.events.subscribe` returns a queue; `mcp_router` detects
+   the queue return and opens an SSE stream, sending `JSONRPCNotification` messages
+   with method `notifications/map.event`.
+
+### Event types (`map_events.py`)
+
+All events are `@dataclass(slots=True)` for minimal allocation overhead.
+Each has `to_dict()` for serialization; `parse_event()` reconstructs them
+from a notification params dict.
+
+```python
+from pyview_map.views.dynamic_map.map_events import (
+    MarkerOpEvent, MarkerEvent, MapEvent, BroadcastEvent, parse_event,
+)
+```
+
+**`MarkerOpEvent`** — marker CRUD from the API:
+```python
+MarkerOpEvent(op="add", id="abc", name="Alpha-01", latLng=[39.5, -98.3])
+MarkerOpEvent(op="update", id="abc", name="Alpha-01", latLng=[40.0, -97.0])
+MarkerOpEvent(op="delete", id="abc")
+# to_dict() → {"type": "marker-op", "op": ..., "id": ..., "name": ..., "latLng": ...}
+```
+
+**`MarkerEvent`** — browser marker interaction:
+```python
+MarkerEvent(event="click", id="markers-abc", name="Alpha-01", latLng=[39.5, -98.3])
+# to_dict() → {"type": "marker-event", "event": ..., "id": ..., "name": ..., "latLng": ...}
+```
+
+**`MapEvent`** — browser map interaction:
+```python
+MapEvent(event="zoomend", center=[39.5, -98.3], zoom=6, latLng=None)
+# to_dict() → {"type": "map-event", "event": ..., "center": ..., "zoom": ..., "latLng": ...}
+```
+
+### Client subscription example
+
+```python
+from pyview_map.views.dynamic_map.map_events import MarkerOpEvent, MarkerEvent, MapEvent, parse_event
+
+req = JSONRPCRequest(method="map.events.subscribe")
+async for msg in rpc.send_request(req):
+    match msg:
+        case JSONRPCNotification():
+            evt = parse_event(msg.params)
+            match evt:
+                case MarkerOpEvent(): ...
+                case MarkerEvent():   ...
+                case MapEvent():      ...
+        case JSONRPCResponse():
+            break  # end of channel
+```
