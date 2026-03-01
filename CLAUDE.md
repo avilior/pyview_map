@@ -38,10 +38,10 @@ src/pyview_map/
         ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
         ├── dmarker.py            # DMarker dataclass (uses LatLng)
         ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
-        ├── api_marker_source.py  # APIMarkerSource — MarkerSource backed by asyncio.Queue (API-driven)
+        ├── api_marker_source.py  # APIMarkerSource — MarkerSource with per-instance fan-out queues
         ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
         ├── map_events.py         # Typed event/command dataclasses + parse_event()
-        ├── command_queue.py      # CommandQueue — class-level queue for map commands
+        ├── command_queue.py      # CommandQueue — fan-out queue for map commands
         ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
         └── static/
             └── dynamic_map.js    # Hooks.DynamicMap (map init + command handlers) + Hooks.DMarkItem
@@ -180,7 +180,8 @@ app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_in
 
 `MockGenerator` in `mock_generator.py` is an in-process reference implementation.
 `APIMarkerSource` in `api_marker_source.py` is the default source used by `/dmap` —
-it receives operations from the JSON-RPC API and queues them for the LiveView tick.
+it receives operations from the JSON-RPC API and fans them out to all connected
+LiveView instances via per-instance subscriber queues.
 
 ## Dependencies
 
@@ -255,8 +256,10 @@ a command to `CommandQueue`; the LiveView tick drains the queue and calls
 All `latLng`/`corner` params are `[lat, lng]` arrays on the wire; converted to
 `LatLng` at the API boundary in `marker_api.py`.
 
-`APIMarkerSource` uses **class-level** state (`_queue`, `_markers`) so all LiveView
-connections share the same queue — every connected browser sees every update.
+`APIMarkerSource` and `CommandQueue` use the **bounded-queue fan-out** pattern
+(same as `EventBroadcaster`): each LiveView instance gets its own subscriber
+queue; push methods fan out to all subscribers; full queues are auto-discarded.
+The shared `_markers` dict stays class-level so all instances see the same state.
 
 ### Hook init ordering pitfall
 
@@ -290,17 +293,20 @@ External clients can control the browser map via `map.*` JSON-RPC methods.
 The flow is:
 
 1. **Client** calls `map.flyTo`, `map.setZoom`, etc. via JSON-RPC
-2. **`marker_api.py`** handler constructs a command dataclass and pushes to `CommandQueue`
-3. **`dynamic_map.py`** `handle_info()` drains `CommandQueue` on every tick, calling
+2. **`marker_api.py`** handler constructs a command dataclass and calls `CommandQueue.push()`
+3. **`CommandQueue`** fans out the command to all subscriber queues (one per LiveView)
+4. **`dynamic_map.py`** `handle_info()` drains its instance queue on every tick, calling
    `socket.push_event()` for each command
-4. **`dynamic_map.js`** `handleEvent` receivers call the corresponding Leaflet method
+5. **`dynamic_map.js`** `handleEvent` receivers call the corresponding Leaflet method
 
 Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `FlyToCmd`,
 `FitBoundsCmd`, `FlyToBoundsCmd`, `SetZoomCmd`, `ResetViewCmd`, `HighlightMarkerCmd`).
 Each has `to_push_event() -> tuple[str, dict]`.
 
-`CommandQueue` in `command_queue.py` uses class-level `asyncio.Queue` (same
-singleton pattern as `APIMarkerSource` and `EventBroadcaster`).
+`CommandQueue` in `command_queue.py` uses the bounded-queue fan-out pattern:
+each LiveView calls `CommandQueue.subscribe()` on mount and drains its own queue
+on each tick. `push()` fans out to all subscriber queues; full queues are
+auto-discarded (same pattern as `APIMarkerSource` and `EventBroadcaster`).
 
 ## Event streaming to external clients
 
