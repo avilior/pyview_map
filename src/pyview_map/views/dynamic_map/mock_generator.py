@@ -84,11 +84,11 @@ class MockGenerator:
         if op == "move":
             marker = random.choice(list(self._markers.values()))
             new_latlng = _advance(marker)
-            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng.to_list(), "icon": marker.icon, "heading": marker.heading}
+            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng.to_list(), "icon": marker.icon, "heading": marker.heading, "speed": marker.speed}
 
         if op == "add":
             marker = self._create_marker()
-            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng.to_list(), "icon": marker.icon, "heading": marker.heading}
+            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng.to_list(), "icon": marker.icon, "heading": marker.heading, "speed": marker.speed}
 
         # delete
         marker = random.choice(list(self._markers.values()))

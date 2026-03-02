@@ -60,6 +60,7 @@ function _addMarkerFromEl(el, hookCtx) {
   const { name, lat, lng } = el.dataset;
   const iconName = el.dataset.icon || "default";
   const heading = el.dataset.heading;
+  const speed = el.dataset.speed;
   const domId = el.id;
 
   const icon = _makeIcon(iconName);
@@ -69,6 +70,7 @@ function _addMarkerFromEl(el, hookCtx) {
     dmarkName: name,
     dmarkIcon: iconName,
     dmarkHeading: heading,
+    dmarkSpeed: speed,
     draggable: true,
   })
     .addTo(_map)
@@ -212,7 +214,9 @@ window.Hooks.DMarkItem = {
       marker.options.dmarkIcon = newIcon;
     }
     const heading = this.el.dataset.heading;
+    const speed = this.el.dataset.speed;
     marker.options.dmarkHeading = heading;
+    marker.options.dmarkSpeed = speed;
     _applyRotation(marker, heading);
     _log("update", `→ ${marker.options.dmarkName} moved`);
   },

@@ -44,22 +44,27 @@ class APIMarkerSource:
             cls._subscribers.discard(q)
 
     @classmethod
-    def push_add(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None) -> None:
-        cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon, heading=heading)
+    def push_add(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None, speed: float | None = None) -> None:
+        cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon, heading=heading, speed=speed)
         op: dict = {"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon}
         if heading is not None:
             op["heading"] = heading
+        if speed is not None:
+            op["speed"] = speed
         cls._broadcast(op)
 
     @classmethod
-    def push_update(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None) -> None:
+    def push_update(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None, speed: float | None = None) -> None:
         if id in cls._markers:
             cls._markers[id].lat_lng = lat_lng
             cls._markers[id].icon = icon
             cls._markers[id].heading = heading
+            cls._markers[id].speed = speed
         op: dict = {"op": "update", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon}
         if heading is not None:
             op["heading"] = heading
+        if speed is not None:
+            op["speed"] = speed
         cls._broadcast(op)
 
     @classmethod

@@ -24,4 +24,6 @@ class DMarker:
         d = {"id": self.id, "name": self.name, "latLng": self.lat_lng.to_list(), "icon": self.icon}
         if self.heading is not None:
             d["heading"] = self.heading
+        if self.speed is not None:
+            d["speed"] = self.speed
         return d

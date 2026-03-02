@@ -130,6 +130,7 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                     lat_lng=LatLng.from_list(update["latLng"]),
                     icon=update.get("icon", "default"),
                     heading=update.get("heading"),
+                    speed=update.get("speed"),
                 )
             )
         elif op == "delete":
@@ -141,6 +142,7 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                     lat_lng=LatLng.from_list(update["latLng"]),
                     icon=update.get("icon", "default"),
                     heading=update.get("heading"),
+                    speed=update.get("speed"),
                 ),
                 update_only=True,
             )
