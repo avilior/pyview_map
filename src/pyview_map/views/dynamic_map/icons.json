@@ -28,5 +28,11 @@
     "iconSize": [14, 14],
     "iconAnchor": [7, 7],
     "className": ""
+  },
+  "airplane": {
+    "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\"><filter id=\"ds\"><feDropShadow dx=\"0\" dy=\"1\" stdDeviation=\"1\" flood-opacity=\"0.4\"/></filter><path filter=\"url(#ds)\" fill=\"#1e40af\" stroke=\"#fff\" stroke-width=\"0.8\" d=\"M12 1.5 L14 8 L21 10 L14 11.5 L14.5 18 L12 16 L9.5 18 L10 11.5 L3 10 L10 8 Z\"/></svg>",
+    "iconSize": [24, 24],
+    "iconAnchor": [12, 12],
+    "className": ""
   }
 }
