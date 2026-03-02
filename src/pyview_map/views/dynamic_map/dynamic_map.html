@@ -47,6 +47,7 @@
                     <div phx-update="ignore" id="dmap_wrapper">
                         <div id="dmap"
                              phx-hook="DynamicMap"
+                             data-icon-registry="{{ icon_registry_json }}"
                              class="w-full h-96 lg:h-[580px] rounded-md overflow-hidden border border-gray-300">
                         </div>
                     </div>
@@ -68,7 +69,8 @@
          phx-hook="DMarkItem"
          data-name="{{ marker.name }}"
          data-lat="{{ marker.lat }}"
-         data-lng="{{ marker.lng }}">
+         data-lng="{{ marker.lng }}"
+         data-icon="{{ marker.icon }}">
     </div>
     {% endfor %}
 </div>

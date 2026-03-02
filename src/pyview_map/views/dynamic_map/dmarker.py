@@ -9,6 +9,7 @@ class DMarker:
     id: str
     name: str
     lat_lng: LatLng
+    icon: str = "default"
     heading: float = field(default_factory=lambda: random.uniform(0, 360))
     speed: float = field(default_factory=lambda: random.uniform(0.4, 1.2))
 
@@ -21,4 +22,4 @@ class DMarker:
         return self.lat_lng.lng
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "latLng": self.lat_lng.to_list()}
+        return {"id": self.id, "name": self.name, "latLng": self.lat_lng.to_list(), "icon": self.icon}

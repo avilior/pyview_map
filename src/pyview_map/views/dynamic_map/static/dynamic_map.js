@@ -8,23 +8,51 @@ const _markers = new Map(); // dom_id -> L.Marker
 // DynamicMap.mounted() flushes them once _map is initialised.
 const _pending = []; // Array of { el, hookCtx }
 
+// ---------------------------------------------------------------------------
+// Icon registry — parsed from the data-icon-registry attribute on #dmap
+// ---------------------------------------------------------------------------
+let _iconRegistry = null;
+
+function _getIconRegistry() {
+  if (_iconRegistry) return _iconRegistry;
+  const el = document.getElementById("dmap");
+  if (el && el.dataset.iconRegistry) {
+    try { _iconRegistry = JSON.parse(el.dataset.iconRegistry); } catch (_) { _iconRegistry = {}; }
+  } else {
+    _iconRegistry = {};
+  }
+  return _iconRegistry;
+}
+
+const _FALLBACK_ICON_DEF = {
+  html: `<div style="background:#2563eb;border:2px solid #fff;border-radius:50%;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+  className: "",
+};
+
+function _makeIcon(iconName) {
+  const reg = _getIconRegistry();
+  const def = reg[iconName] || reg["default"] || _FALLBACK_ICON_DEF;
+  return L.divIcon({
+    className: def.className ?? "",
+    html: def.html,
+    iconSize: def.iconSize,
+    iconAnchor: def.iconAnchor,
+  });
+}
+
 function _addMarkerFromEl(el, hookCtx) {
   const { name, lat, lng } = el.dataset;
+  const iconName = el.dataset.icon || "default";
   const domId = el.id;
 
-  const icon = L.divIcon({
-    className: "",
-    html: `<div style="
-      background:#2563eb;border:2px solid #fff;border-radius:50%;
-      width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)">
-    </div>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
-  });
+  const icon = _makeIcon(iconName);
 
   const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
     icon,
     dmarkName: name,
+    dmarkIcon: iconName,
     draggable: true,
   })
     .addTo(_map)
@@ -160,6 +188,11 @@ window.Hooks.DMarkItem = {
     if (!marker) return;
     const { lat, lng } = this.el.dataset;
     marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
+    const newIcon = this.el.dataset.icon || "default";
+    if (newIcon !== marker.options.dmarkIcon) {
+      marker.setIcon(_makeIcon(newIcon));
+      marker.options.dmarkIcon = newIcon;
+    }
     _log("update", `→ ${marker.options.dmarkName} moved`);
   },
 

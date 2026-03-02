@@ -24,18 +24,18 @@ from pyview_map.views.dynamic_map.map_events import (
 # -- Register marker methods on the global JRPCService instance -----------
 
 @jrpc_service.request("markers.add")
-def markers_add(id: str, name: str, latLng: list[float]) -> dict:
+def markers_add(id: str, name: str, latLng: list[float], icon: str = "default") -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_add(id, name, ll)
-    EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll))
+    APIMarkerSource.push_add(id, name, ll, icon=icon)
+    EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll, icon=icon))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.update")
-def markers_update(id: str, name: str, latLng: list[float]) -> dict:
+def markers_update(id: str, name: str, latLng: list[float], icon: str = "default") -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_update(id, name, ll)
-    EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll))
+    APIMarkerSource.push_update(id, name, ll, icon=icon)
+    EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll, icon=icon))
     return {"ok": True}
 
 

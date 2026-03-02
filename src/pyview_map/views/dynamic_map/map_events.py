@@ -13,6 +13,7 @@ class MarkerOpEvent:
     id: str
     name: str | None = None
     latLng: LatLng | None = None
+    icon: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"type": "marker-op", "op": self.op, "id": self.id}
@@ -20,6 +21,8 @@ class MarkerOpEvent:
             d["name"] = self.name
         if self.latLng is not None:
             d["latLng"] = self.latLng.to_list()
+        if self.icon is not None:
+            d["icon"] = self.icon
         return d
 
 
@@ -74,6 +77,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 op=params["op"], id=params["id"],
                 name=params.get("name"),
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
+                icon=params.get("icon"),
             )
         case "marker-event":
             return MarkerEvent(

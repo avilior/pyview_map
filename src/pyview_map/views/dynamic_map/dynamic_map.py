@@ -11,6 +11,7 @@ from pyview.vendor.ibis import filters
 from .command_queue import CommandQueue
 from .dmarker import DMarker
 from .event_broadcaster import EventBroadcaster
+from .icon_registry import icon_registry
 from .latlng import LatLng
 from .map_events import MapEvent, MarkerEvent
 
@@ -55,6 +56,7 @@ class MarkerSource(Protocol):
 @dataclass
 class DynamicMapContext:
     markers: Stream[DMarker]
+    icon_registry_json: str = ""
     last_marker_event: str = ""
     last_map_event: str = ""
 
@@ -105,7 +107,8 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
             )
         self._source: MarkerSource = self.source_class(**self._source_kwargs)
         socket.context = DynamicMapContext(
-            markers=Stream(self._source.markers, name="markers")
+            markers=Stream(self._source.markers, name="markers"),
+            icon_registry_json=icon_registry.to_json(),
         )
         if socket.connected:
             self._cmd_queue = CommandQueue.subscribe()
@@ -122,13 +125,21 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
             pass
         elif op == "add":
             socket.context.markers.insert(
-                DMarker(id=update["id"], name=update["name"], lat_lng=LatLng.from_list(update["latLng"]))
+                DMarker(
+                    id=update["id"], name=update["name"],
+                    lat_lng=LatLng.from_list(update["latLng"]),
+                    icon=update.get("icon", "default"),
+                )
             )
         elif op == "delete":
             socket.context.markers.delete_by_id(f"markers-{update['id']}")
         elif op == "update":
             socket.context.markers.insert(
-                DMarker(id=update["id"], name=update["name"], lat_lng=LatLng.from_list(update["latLng"])),
+                DMarker(
+                    id=update["id"], name=update["name"],
+                    lat_lng=LatLng.from_list(update["latLng"]),
+                    icon=update.get("icon", "default"),
+                ),
                 update_only=True,
             )
 

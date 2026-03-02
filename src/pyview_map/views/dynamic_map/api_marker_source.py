@@ -44,15 +44,16 @@ class APIMarkerSource:
             cls._subscribers.discard(q)
 
     @classmethod
-    def push_add(cls, id: str, name: str, lat_lng: LatLng) -> None:
-        cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng)
-        cls._broadcast({"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list()})
+    def push_add(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default") -> None:
+        cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon)
+        cls._broadcast({"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon})
 
     @classmethod
-    def push_update(cls, id: str, name: str, lat_lng: LatLng) -> None:
+    def push_update(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default") -> None:
         if id in cls._markers:
             cls._markers[id].lat_lng = lat_lng
-        cls._broadcast({"op": "update", "id": id, "name": name, "latLng": lat_lng.to_list()})
+            cls._markers[id].icon = icon
+        cls._broadcast({"op": "update", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon})
 
     @classmethod
     def push_delete(cls, id: str) -> None:
