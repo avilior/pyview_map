@@ -1,5 +1,4 @@
-import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .latlng import LatLng
 
@@ -10,8 +9,8 @@ class DMarker:
     name: str
     lat_lng: LatLng
     icon: str = "default"
-    heading: float = field(default_factory=lambda: random.uniform(0, 360))
-    speed: float = field(default_factory=lambda: random.uniform(0.4, 1.2))
+    heading: float | None = None
+    speed: float | None = None
 
     @property
     def lat(self) -> float:
@@ -22,4 +21,7 @@ class DMarker:
         return self.lat_lng.lng
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "latLng": self.lat_lng.to_list(), "icon": self.icon}
+        d = {"id": self.id, "name": self.name, "latLng": self.lat_lng.to_list(), "icon": self.icon}
+        if self.heading is not None:
+            d["heading"] = self.heading
+        return d

@@ -84,11 +84,11 @@ class MockGenerator:
         if op == "move":
             marker = random.choice(list(self._markers.values()))
             new_latlng = _advance(marker)
-            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng.to_list(), "icon": marker.icon}
+            return {"op": "update", "id": marker.id, "name": marker.name, "latLng": new_latlng.to_list(), "icon": marker.icon, "heading": marker.heading}
 
         if op == "add":
             marker = self._create_marker()
-            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng.to_list(), "icon": marker.icon}
+            return {"op": "add", "id": marker.id, "name": marker.name, "latLng": marker.lat_lng.to_list(), "icon": marker.icon, "heading": marker.heading}
 
         # delete
         marker = random.choice(list(self._markers.values()))
@@ -111,6 +111,11 @@ class MockGenerator:
 
         self._used_names.add(name)
         mid = str(uuid.uuid4())[:8]
-        marker = DMarker(id=mid, name=name, lat_lng=_random_latlng(), icon=random.choice(_ICON_NAMES))
+        marker = DMarker(
+            id=mid, name=name, lat_lng=_random_latlng(),
+            icon=random.choice(_ICON_NAMES),
+            heading=random.uniform(0, 360),
+            speed=random.uniform(0.4, 1.2),
+        )
         self._markers[mid] = marker
         return marker

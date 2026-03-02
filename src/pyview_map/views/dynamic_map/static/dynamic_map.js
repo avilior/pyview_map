@@ -42,9 +42,24 @@ function _makeIcon(iconName) {
   });
 }
 
+function _applyRotation(marker, heading) {
+  if (heading === null || heading === undefined || heading === "") return;
+  const el = marker.getElement();
+  if (!el) return;
+  const inner = el.querySelector("*");
+  if (!inner) return;
+  inner.style.transform = `rotate(${heading}deg)`;
+  inner.style.transformOrigin = "center center";
+  if (!inner.dataset.rotationInit) {
+    inner.style.transition = "transform 0.3s ease";
+    inner.dataset.rotationInit = "1";
+  }
+}
+
 function _addMarkerFromEl(el, hookCtx) {
   const { name, lat, lng } = el.dataset;
   const iconName = el.dataset.icon || "default";
+  const heading = el.dataset.heading;
   const domId = el.id;
 
   const icon = _makeIcon(iconName);
@@ -53,10 +68,13 @@ function _addMarkerFromEl(el, hookCtx) {
     icon,
     dmarkName: name,
     dmarkIcon: iconName,
+    dmarkHeading: heading,
     draggable: true,
   })
     .addTo(_map)
     .bindTooltip(name, { permanent: false, direction: "top" });
+
+  _applyRotation(marker, heading);
 
   MARKER_EVENTS.forEach((evtName) => {
     marker.on(evtName, () => {
@@ -193,6 +211,9 @@ window.Hooks.DMarkItem = {
       marker.setIcon(_makeIcon(newIcon));
       marker.options.dmarkIcon = newIcon;
     }
+    const heading = this.el.dataset.heading;
+    marker.options.dmarkHeading = heading;
+    _applyRotation(marker, heading);
     _log("update", `→ ${marker.options.dmarkName} moved`);
   },
 

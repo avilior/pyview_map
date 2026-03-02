@@ -29,7 +29,7 @@ _CALLSIGNS = [
     "Foxtrot", "Golf", "Hotel", "India", "Juliet",
 ]
 
-_ICONS = ["default", "red-dot", "green-dot", "warning", "vehicle"]
+_ICONS = ["default", "red-dot", "green-dot", "warning", "vehicle", "airplane"]
 
 
 def _random_latlng() -> list[float]:
@@ -158,10 +158,11 @@ async def main() -> None:
                 "speed": random.uniform(0.4, 1.2),
                 "icon": icon,
             }
-            req = JSONRPCRequest(method="markers.add", params={"id": mid, "name": name, "latLng": [lat, lng], "icon": icon})
+            heading = markers[mid]["heading"]
+            req = JSONRPCRequest(method="markers.add", params={"id": mid, "name": name, "latLng": [lat, lng], "icon": icon, "heading": heading})
             async for resp in rpc.send_request(req):
                 pass  # consume response
-            print(f"  added {name} ({icon}) at ({lat}, {lng})")
+            print(f"  added {name} ({icon}) at ({lat}, {lng}) heading={heading:.0f}°")
 
         print(f"\nSeeded {initial_count} markers.")
 
@@ -175,7 +176,7 @@ async def main() -> None:
                 await asyncio.sleep(1.2)
                 mid, m = random.choice(list(markers.items()))
                 new_latlng = _advance(m)
-                req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng, "icon": m["icon"]})
+                req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng, "icon": m["icon"], "heading": m["heading"]})
                 async for resp in rpc.send_request(req):
                     if resp.id != req.id:
                         print(f"  ERROR: unexpected response id {resp.id} != {req.id}")
