@@ -8,12 +8,14 @@ from pyview.events import InfoEvent
 from pyview.stream import Stream
 from pyview.vendor.ibis import filters
 
+from .api_polyline_source import APIPolylineSource
 from .command_queue import CommandQueue
 from .dmarker import DMarker
+from .dpolyline import DPolyline
 from .event_broadcaster import EventBroadcaster
 from .icon_registry import icon_registry
 from .latlng import LatLng
-from .map_events import MapEvent, MarkerEvent
+from .map_events import MapEvent, MarkerEvent, PolylineEvent
 
 
 @filters.register
@@ -56,9 +58,11 @@ class MarkerSource(Protocol):
 @dataclass
 class DynamicMapContext:
     markers: Stream[DMarker]
+    polylines: Stream[DPolyline] | None = None
     icon_registry_json: str = ""
     last_marker_event: str = ""
     last_map_event: str = ""
+    last_polyline_event: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +110,10 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                 "Use DynamicMapLiveView.with_source(MySource) when registering the route."
             )
         self._source: MarkerSource = self.source_class(**self._source_kwargs)
+        self._polyline_source = APIPolylineSource()
         socket.context = DynamicMapContext(
             markers=Stream(self._source.markers, name="markers"),
+            polylines=Stream(self._polyline_source.polylines, name="polylines"),
             icon_registry_json=icon_registry.to_json(),
         )
         if socket.connected:
@@ -147,6 +153,38 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                 update_only=True,
             )
 
+        # Drain polyline updates
+        pl_update = self._polyline_source.next_update()
+        pl_op = pl_update["op"]
+
+        if pl_op == "noop":
+            pass
+        elif pl_op == "add":
+            socket.context.polylines.insert(
+                DPolyline(
+                    id=pl_update["id"], name=pl_update["name"],
+                    path=[LatLng.from_list(p) for p in pl_update["path"]],
+                    color=pl_update.get("color", "#3388ff"),
+                    weight=pl_update.get("weight", 3),
+                    opacity=pl_update.get("opacity", 1.0),
+                    dash_array=pl_update.get("dashArray"),
+                )
+            )
+        elif pl_op == "delete":
+            socket.context.polylines.delete_by_id(f"polylines-{pl_update['id']}")
+        elif pl_op == "update":
+            socket.context.polylines.insert(
+                DPolyline(
+                    id=pl_update["id"], name=pl_update["name"],
+                    path=[LatLng.from_list(p) for p in pl_update["path"]],
+                    color=pl_update.get("color", "#3388ff"),
+                    weight=pl_update.get("weight", 3),
+                    opacity=pl_update.get("opacity", 1.0),
+                    dash_array=pl_update.get("dashArray"),
+                ),
+                update_only=True,
+            )
+
         # Drain pending map commands from this view's queue
         while True:
             try:
@@ -171,6 +209,21 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
                 detail += f" @ ({me.latLng.lat:.2f}, {me.latLng.lng:.2f})"
             socket.context.last_marker_event = detail
             EventBroadcaster.broadcast(me)
+
+        elif event == "polyline-event":
+            raw_ll = payload.get("latLng", [])
+            ll = LatLng.from_list(raw_ll) if raw_ll else LatLng(0, 0)
+            pe = PolylineEvent(
+                event=payload.get("event", "?"),
+                id=payload.get("id", ""),
+                name=payload.get("name", payload.get("id", "?")),
+                latLng=ll,
+            )
+            detail = f"{pe.event} → {pe.name}"
+            if pe.latLng:
+                detail += f" @ ({pe.latLng.lat:.2f}, {pe.latLng.lng:.2f})"
+            socket.context.last_polyline_event = detail
+            EventBroadcaster.broadcast(pe)
 
         elif event == "map-event":
             raw_center = payload.get("center", [])

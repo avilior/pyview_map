@@ -34,7 +34,12 @@
                             ◆ {{ last_map_event }}
                         </div>
                         {% endif %}
-                        {% if not last_marker_event and not last_map_event %}
+                        {% if last_polyline_event %}
+                        <div class="text-green-600 truncate" title="{{ last_polyline_event }}">
+                            ▬ {{ last_polyline_event }}
+                        </div>
+                        {% endif %}
+                        {% if not last_marker_event and not last_map_event and not last_polyline_event %}
                         <div class="text-gray-400">No events yet</div>
                         {% endif %}
                     </div>
@@ -73,6 +78,20 @@
          data-icon="{{ marker.icon }}"
          data-heading="{{ marker.heading }}"
          data-speed="{{ marker.speed }}">
+    </div>
+    {% endfor %}
+</div>
+
+<div id="polylines" phx-update="stream" style="display:none" aria-hidden="true">
+    {% for dom_id, polyline in polylines %}
+    <div id="{{ dom_id }}"
+         phx-hook="DPolylineItem"
+         data-name="{{ polyline.name }}"
+         data-path="{{ polyline.path_as_lists|json_encode }}"
+         data-color="{{ polyline.color }}"
+         data-weight="{{ polyline.weight }}"
+         data-opacity="{{ polyline.opacity }}"
+         data-dash-array="{{ polyline.dash_array }}">
     </div>
     {% endfor %}
 </div>

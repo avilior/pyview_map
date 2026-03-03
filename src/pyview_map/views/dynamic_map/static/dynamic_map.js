@@ -1,12 +1,25 @@
+// Patch Leaflet.RepeatedMarkers to also copy _tooltip (plugin only copies _popup).
+const _origAddOffset = L.GridLayer.RepeatedMarkers.prototype._addOffsetMarker;
+L.GridLayer.RepeatedMarkers.prototype._addOffsetMarker = function(marker, longitudeOffset) {
+  const copy = _origAddOffset.call(this, marker, longitudeOffset);
+  if (marker._tooltip) {
+    copy.bindTooltip(marker._tooltip._content, marker._tooltip.options);
+  }
+  return copy;
+};
+
 // Shared Leaflet map instance and marker registry.
 // DynamicMap hook (the map <div>) writes _map once on mount.
 // DMarkItem hooks (the invisible stream sentinels) read it.
 let _map = null;
-const _markers = new Map(); // dom_id -> L.Marker
+let _repeatedMarkers = null; // L.gridLayer.repeatedMarkers — handles world-copy duplication
+const _markers = new Map(); // dom_id -> L.Marker (original; plugin manages copies)
+const _polylines = new Map(); // dom_id -> L.Polyline
 
 // Hooks that mounted before the map was ready queue themselves here.
 // DynamicMap.mounted() flushes them once _map is initialised.
 const _pending = []; // Array of { el, hookCtx }
+const _pendingPolylines = []; // Array of { el, hookCtx }
 
 // ---------------------------------------------------------------------------
 // Icon registry — parsed from the data-icon-registry attribute on #dmap
@@ -31,29 +44,21 @@ const _FALLBACK_ICON_DEF = {
   className: "",
 };
 
-function _makeIcon(iconName) {
+// Build a DivIcon, optionally baking heading rotation into the HTML so that
+// copies created by Leaflet.RepeatedMarkers inherit the transform.
+function _makeIcon(iconName, heading) {
   const reg = _getIconRegistry();
   const def = reg[iconName] || reg["default"] || _FALLBACK_ICON_DEF;
+  let html = def.html;
+  if (heading != null && heading !== "" && heading !== "None") {
+    html = `<div style="transform:rotate(${heading}deg);transform-origin:center center;transition:transform 0.3s ease">${html}</div>`;
+  }
   return L.divIcon({
     className: def.className ?? "",
-    html: def.html,
+    html,
     iconSize: def.iconSize,
     iconAnchor: def.iconAnchor,
   });
-}
-
-function _applyRotation(marker, heading) {
-  if (heading === null || heading === undefined || heading === "") return;
-  const el = marker.getElement();
-  if (!el) return;
-  const inner = el.querySelector("*");
-  if (!inner) return;
-  inner.style.transform = `rotate(${heading}deg)`;
-  inner.style.transformOrigin = "center center";
-  if (!inner.dataset.rotationInit) {
-    inner.style.transition = "transform 0.3s ease";
-    inner.dataset.rotationInit = "1";
-  }
 }
 
 function _addMarkerFromEl(el, hookCtx) {
@@ -63,8 +68,10 @@ function _addMarkerFromEl(el, hookCtx) {
   const speed = el.dataset.speed;
   const domId = el.id;
 
-  const icon = _makeIcon(iconName);
+  const icon = _makeIcon(iconName, heading);
 
+  // Create marker but do NOT add to _map — the RepeatedMarkers layer
+  // handles rendering in every visible world copy.
   const marker = L.marker([parseFloat(lat), parseFloat(lng)], {
     icon,
     dmarkName: name,
@@ -73,10 +80,7 @@ function _addMarkerFromEl(el, hookCtx) {
     dmarkSpeed: speed,
     draggable: true,
   })
-    .addTo(_map)
     .bindTooltip(name, { permanent: false, direction: "top" });
-
-  _applyRotation(marker, heading);
 
   MARKER_EVENTS.forEach((evtName) => {
     marker.on(evtName, () => {
@@ -90,8 +94,71 @@ function _addMarkerFromEl(el, hookCtx) {
     });
   });
 
+  _repeatedMarkers.addMarker(marker);
   _markers.set(domId, marker);
   _log("add", `＋ ${name} appeared`);
+}
+
+// ---------------------------------------------------------------------------
+// Polyline support — unwrap path so lines cross the antimeridian continuously
+// ---------------------------------------------------------------------------
+
+const POLYLINE_EVENTS = ["click", "dblclick", "contextmenu", "mouseover", "mouseout"];
+
+// Unwrap longitudes so polylines crossing the antimeridian (±180°) take the
+// short path instead of wrapping the long way around the globe.  Coordinates
+// may extend beyond [-180, 180] — that's intentional; the repeated markers
+// ensure there's always a visible marker at each endpoint.
+function _unwrapPath(path) {
+  if (path.length < 2) return path;
+  const result = [[path[0][0], path[0][1]]];
+  for (let i = 1; i < path.length; i++) {
+    const prevLng = result[i - 1][1];
+    let lng = path[i][1];
+    while (lng - prevLng > 180) lng -= 360;
+    while (lng - prevLng < -180) lng += 360;
+    result.push([path[i][0], lng]);
+  }
+  return result;
+}
+
+function _parsePolylineOpts(el) {
+  const opts = {
+    color: el.dataset.color || "#3388ff",
+    weight: parseInt(el.dataset.weight) || 3,
+    opacity: parseFloat(el.dataset.opacity) || 1.0,
+  };
+  const dashArray = el.dataset.dashArray;
+  if (dashArray && dashArray !== "None" && dashArray !== "null") {
+    opts.dashArray = dashArray;
+  }
+  return opts;
+}
+
+function _addPolylineFromEl(el, hookCtx) {
+  const { name } = el.dataset;
+  const domId = el.id;
+  const path = _unwrapPath(JSON.parse(el.dataset.path));
+  const opts = _parsePolylineOpts(el);
+
+  const polyline = L.polyline(path, opts)
+    .addTo(_map)
+    .bindTooltip(name, { sticky: true });
+
+  POLYLINE_EVENTS.forEach((evtName) => {
+    polyline.on(evtName, (e) => {
+      const ll = e.latlng;
+      hookCtx.pushEvent("polyline-event", {
+        event: evtName,
+        id: domId,
+        name,
+        latLng: [ll.lat, ll.lng],
+      });
+    });
+  });
+
+  _polylines.set(domId, polyline);
+  _log("add", `＋ polyline "${name}" added`);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +184,18 @@ window.Hooks.DynamicMap = {
   mounted() {
     _map = L.map(this.el).setView([39.5, -98.35], 4);
 
+    // Repeated markers layer — renders marker copies in every world copy
+    _repeatedMarkers = L.gridLayer.repeatedMarkers().addTo(_map);
+
     // Flush any DMarkItem hooks that mounted before _map was ready
     while (_pending.length) {
       const { el, hookCtx } = _pending.shift();
       _addMarkerFromEl(el, hookCtx);
+    }
+    // Flush any DPolylineItem hooks that mounted before _map was ready
+    while (_pendingPolylines.length) {
+      const { el, hookCtx } = _pendingPolylines.shift();
+      _addPolylineFromEl(el, hookCtx);
     }
     L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
@@ -153,7 +228,11 @@ window.Hooks.DynamicMap = {
     this.handleEvent("resetView", () => _map.setView([39.5, -98.35], 4));
     this.handleEvent("highlightMarker", ({id}) => {
       const marker = _markers.get(`markers-${id}`);
-      if (marker) { _map.panTo(marker.getLatLng()); marker.openTooltip(); }
+      if (marker) { _map.panTo(marker.getLatLng()); }
+    });
+    this.handleEvent("highlightPolyline", ({id}) => {
+      const polyline = _polylines.get(`polylines-${id}`);
+      if (polyline) { _map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
     });
 
     // mousemove — throttled to at most once per second
@@ -188,9 +267,9 @@ const MARKER_EVENTS = [
 
 // ---------------------------------------------------------------------------
 // DMarkItem — one hook per stream sentinel <div>
-//   mounted()   → add a Leaflet marker and wire all marker events
-//   updated()   → move the Leaflet marker to new lat/lng
-//   destroyed() → remove the Leaflet marker
+//   mounted()   → add marker to RepeatedMarkers layer
+//   updated()   → update marker position/icon, redraw layer
+//   destroyed() → remove from layer
 // ---------------------------------------------------------------------------
 
 window.Hooks.DMarkItem = {
@@ -207,17 +286,18 @@ window.Hooks.DMarkItem = {
     const marker = _markers.get(this.el.id);
     if (!marker) return;
     const { lat, lng } = this.el.dataset;
-    marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
     const newIcon = this.el.dataset.icon || "default";
-    if (newIcon !== marker.options.dmarkIcon) {
-      marker.setIcon(_makeIcon(newIcon));
-      marker.options.dmarkIcon = newIcon;
-    }
     const heading = this.el.dataset.heading;
     const speed = this.el.dataset.speed;
+
+    marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
+    marker.setIcon(_makeIcon(newIcon, heading));
+    marker.options.dmarkIcon = newIcon;
     marker.options.dmarkHeading = heading;
     marker.options.dmarkSpeed = speed;
-    _applyRotation(marker, heading);
+
+    // Redraw the layer so copies pick up the new position/icon
+    _repeatedMarkers.redraw();
     _log("update", `→ ${marker.options.dmarkName} moved`);
   },
 
@@ -225,9 +305,41 @@ window.Hooks.DMarkItem = {
     const marker = _markers.get(this.el.id);
     if (!marker) return;
     const name = marker.options.dmarkName;
-    marker.remove();
+    _repeatedMarkers.removeMarker(marker);
     _markers.delete(this.el.id);
     _log("delete", `✕ ${name} removed`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// DPolylineItem — one hook per polyline stream sentinel <div>
+// ---------------------------------------------------------------------------
+
+window.Hooks.DPolylineItem = {
+  mounted() {
+    if (!_map) {
+      _pendingPolylines.push({ el: this.el, hookCtx: this });
+      return;
+    }
+    _addPolylineFromEl(this.el, this);
+  },
+
+  updated() {
+    const polyline = _polylines.get(this.el.id);
+    if (!polyline) return;
+    const path = _unwrapPath(JSON.parse(this.el.dataset.path));
+    polyline.setLatLngs(path);
+    polyline.setStyle(_parsePolylineOpts(this.el));
+    _log("update", `→ polyline "${this.el.dataset.name}" updated`);
+  },
+
+  destroyed() {
+    const polyline = _polylines.get(this.el.id);
+    if (!polyline) return;
+    const name = this.el.dataset.name;
+    polyline.remove();
+    _polylines.delete(this.el.id);
+    _log("delete", `✕ polyline "${name}" removed`);
   },
 };
 

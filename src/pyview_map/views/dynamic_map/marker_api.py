@@ -6,6 +6,7 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
+from pyview_map.views.dynamic_map.api_polyline_source import APIPolylineSource
 from pyview_map.views.dynamic_map.command_queue import CommandQueue
 from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
 from pyview_map.views.dynamic_map.latlng import LatLng
@@ -14,7 +15,9 @@ from pyview_map.views.dynamic_map.map_events import (
     FlyToBoundsCmd,
     FlyToCmd,
     HighlightMarkerCmd,
+    HighlightPolylineCmd,
     MarkerOpEvent,
+    PolylineOpEvent,
     ResetViewCmd,
     SetViewCmd,
     SetZoomCmd,
@@ -98,6 +101,50 @@ def map_reset_view() -> dict:
 def map_highlight_marker(id: str) -> dict:
     CommandQueue.push(HighlightMarkerCmd(id=id))
     return {"ok": True}
+
+
+@jrpc_service.request("map.highlightPolyline")
+def map_highlight_polyline(id: str) -> dict:
+    CommandQueue.push(HighlightPolylineCmd(id=id))
+    return {"ok": True}
+
+
+# -- Polyline methods ------------------------------------------------------
+
+@jrpc_service.request("polylines.add")
+def polylines_add(
+    id: str, name: str, path: list[list[float]],
+    color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
+    dashArray: str | None = None,
+) -> dict:
+    ll_path = [LatLng.from_list(p) for p in path]
+    APIPolylineSource.push_add(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    EventBroadcaster.broadcast(PolylineOpEvent(op="add", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray))
+    return {"ok": True}
+
+
+@jrpc_service.request("polylines.update")
+def polylines_update(
+    id: str, name: str, path: list[list[float]],
+    color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
+    dashArray: str | None = None,
+) -> dict:
+    ll_path = [LatLng.from_list(p) for p in path]
+    APIPolylineSource.push_update(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    EventBroadcaster.broadcast(PolylineOpEvent(op="update", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray))
+    return {"ok": True}
+
+
+@jrpc_service.request("polylines.delete")
+def polylines_delete(id: str) -> dict:
+    APIPolylineSource.push_delete(id)
+    EventBroadcaster.broadcast(PolylineOpEvent(op="delete", id=id))
+    return {"ok": True}
+
+
+@jrpc_service.request("polylines.list")
+def polylines_list() -> dict:
+    return {"polylines": [p.to_dict() for p in APIPolylineSource._polylines.values()]}
 
 
 # -- FastAPI sub-app mounted at /api in __main__.py -----------------------

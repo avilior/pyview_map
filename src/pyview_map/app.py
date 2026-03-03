@@ -62,6 +62,7 @@ css = """
      crossorigin=""></script>
 
 <script src="https://unpkg.com/@joergdietrich/leaflet.terminator@1.0.0/L.Terminator.js"></script>
+<script src="https://unpkg.com/leaflet.repeatedmarkers@latest/Leaflet.RepeatedMarkers.js"></script>
 <script defer type="text/javascript" src="/static/map.js"></script>
 <script defer type="text/javascript" src="/static/dynamic_map.js"></script>
 """

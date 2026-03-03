@@ -9,11 +9,13 @@ import asyncio
 import math
 import random
 import uuid
+from ctypes.wintypes import tagPOINT
 from datetime import datetime, timezone, timedelta
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
+from pyview_map.views.dynamic_map import DPolyline
 from pyview_map.views.dynamic_map.dmarker import DMarker
 from pyview_map.views.dynamic_map.latlng import LatLng
 
@@ -195,8 +197,36 @@ class Flight:
     arrival_time: datetime | None = None
     planned_route: list[Tuple[datetime, float, float]] = None
 
-async def main() -> None:
+def build_flight(from_airport_name: str, to_airport_name: str, flight_id: str, plane_id: str) -> Flight:
 
+    from_airport = AIRPORT_REGISTRY[from_airport_name]
+    to_airport = AIRPORT_REGISTRY[to_airport_name]
+
+    planned_route = [t for t in great_circle_flight_generator(
+                            from_latlng= from_airport.latlng,
+                            to_latlng= to_airport.latlng,
+                            ground_speed_knots = 500,
+                            start_time = datetime.now(timezone.utc),
+                            step=timedelta(minutes=1))]
+
+    flight_duration = planned_route[-1][0] - planned_route[0][0]
+
+    heading = bearing_deg(from_latlng= from_airport.latlng, to_latlng=to_airport.latlng)
+
+    flight = Flight(
+            id=flight_id,
+            plane=Plane(id=plane_id, marker=DMarker(id=plane_id, name=plane_id, lat_lng=from_airport.latlng, icon="airplane", speed=500, heading=heading)),
+            origin=from_airport,
+            destination=to_airport,
+            departure_time=datetime.now(timezone.utc),
+            arrival_time=planned_route[-1][0],
+            planned_route=planned_route,
+    )
+    return flight
+
+
+
+async def main() -> None:
     #
     init_airport_markers()  # i
 
@@ -217,31 +247,45 @@ async def main() -> None:
 
         # create a flight
 
-        planned_route = [t for t in great_circle_flight_generator(
-                            from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
-                            to_latlng= AIRPORT_REGISTRY["YVR"].latlng,
-                            ground_speed_knots = 500,
-                            start_time = datetime.now(timezone.utc),
-                            step=timedelta(minutes=1))]
+        flight = build_flight(from_airport_name="YOW", to_airport_name="SYD", flight_id="flight1", plane_id="plane1")
 
-        flight_duration = planned_route[-1][0] - planned_route[0][0]
+        # planned_route = [t for t in great_circle_flight_generator(
+        #                     from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
+        #                     to_latlng= AIRPORT_REGISTRY["YVR"].latlng,
+        #                     ground_speed_knots = 500,
+        #                     start_time = datetime.now(timezone.utc),
+        #                     step=timedelta(minutes=1))]
+        #
+        # flight_duration = planned_route[-1][0] - planned_route[0][0]
+        #
+        # heading = bearing_deg(
+        #         from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
+        #         to_latlng= AIRPORT_REGISTRY["YVR"].latlng)
+        #
+        # flight = Flight(
+        #     id="flight1",
+        #     plane=Plane(id="plane1", marker=DMarker(id="plane1", name="plane1", lat_lng=AIRPORT_REGISTRY["YOW"].latlng, icon="airplane", speed=500, heading=heading)),
+        #     origin=AIRPORT_REGISTRY["YOW"],
+        #     destination=AIRPORT_REGISTRY["YVR"],
+        #     departure_time=datetime.now(timezone.utc),
+        #     arrival_time=planned_route[-1][0],
+        #     planned_route=planned_route,
+        # )
 
-        heading = bearing_deg(
-                from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
-                to_latlng= AIRPORT_REGISTRY["YVR"].latlng)
-
-        flight = Flight(
-            id="flight1",
-            plane=Plane(id="plane1", marker=DMarker(id="plane1", name="plane1", lat_lng=AIRPORT_REGISTRY["YOW"].latlng, icon="airplane", speed=500, heading=heading)),
-            origin=AIRPORT_REGISTRY["YOW"],
-            destination=AIRPORT_REGISTRY["YVR"],
-            departure_time=datetime.now(timezone.utc),
-            arrival_time=planned_route[-1][0],
-            planned_route=planned_route,
-        )
         # add the plane to the map
         await _send(rpc, "markers.add", flight.plane.marker.to_dict())
+
         # add the route to the map
+
+        planned_route_dpolyline = DPolyline(
+            id="flight1_route",
+            name="Flight 1 Route",
+            path=[latlng for _, latlng in flight.planned_route],
+            color="#3388ff",
+            weight=3,
+            opacity=1.0,
+        )
+        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict())
         print("Added plane")
 
 # async def main() -> None:

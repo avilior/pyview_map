@@ -70,7 +70,56 @@ class MapEvent:
         }
 
 
-BroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent
+@dataclass(slots=True)
+class PolylineOpEvent:
+    """Polyline CRUD operation from the API (add/update/delete)."""
+
+    op: str  # "add" | "update" | "delete"
+    id: str
+    name: str | None = None
+    path: list[LatLng] | None = None
+    color: str | None = None
+    weight: int | None = None
+    opacity: float | None = None
+    dashArray: str | None = None
+
+    def to_dict(self) -> dict:
+        d: dict = {"type": "polyline-op", "op": self.op, "id": self.id}
+        if self.name is not None:
+            d["name"] = self.name
+        if self.path is not None:
+            d["path"] = [ll.to_list() for ll in self.path]
+        if self.color is not None:
+            d["color"] = self.color
+        if self.weight is not None:
+            d["weight"] = self.weight
+        if self.opacity is not None:
+            d["opacity"] = self.opacity
+        if self.dashArray is not None:
+            d["dashArray"] = self.dashArray
+        return d
+
+
+@dataclass(slots=True)
+class PolylineEvent:
+    """Browser polyline interaction (click, etc.)."""
+
+    event: str
+    id: str
+    name: str
+    latLng: LatLng
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "polyline-event",
+            "event": self.event,
+            "id": self.id,
+            "name": self.name,
+            "latLng": self.latLng.to_list(),
+        }
+
+
+BroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent | PolylineOpEvent | PolylineEvent
 
 
 def parse_event(params: dict) -> BroadcastEvent:
@@ -100,6 +149,23 @@ def parse_event(params: dict) -> BroadcastEvent:
                 center=LatLng.from_list(params["center"]),
                 zoom=params["zoom"],
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
+            )
+        case "polyline-op":
+            raw_path = params.get("path")
+            return PolylineOpEvent(
+                op=params["op"], id=params["id"],
+                name=params.get("name"),
+                path=[LatLng.from_list(p) for p in raw_path] if raw_path else None,
+                color=params.get("color"),
+                weight=params.get("weight"),
+                opacity=params.get("opacity"),
+                dashArray=params.get("dashArray"),
+            )
+        case "polyline-event":
+            return PolylineEvent(
+                event=params["event"], id=params["id"],
+                name=params["name"],
+                latLng=LatLng.from_list(params["latLng"]),
             )
         case _:
             raise ValueError(f"Unknown event type: {etype}")
@@ -167,4 +233,12 @@ class HighlightMarkerCmd:
         return "highlightMarker", {"id": self.id}
 
 
-MapCommand = SetViewCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd
+@dataclass(slots=True)
+class HighlightPolylineCmd:
+    id: str
+
+    def to_push_event(self) -> tuple[str, dict]:
+        return "highlightPolyline", {"id": self.id}
+
+
+MapCommand = SetViewCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd | HighlightPolylineCmd
