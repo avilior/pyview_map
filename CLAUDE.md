@@ -37,16 +37,22 @@ src/pyview_map/
         ├── dynamic_map.css
         ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
         ├── dmarker.py            # DMarker dataclass (uses LatLng)
+        ├── dpolyline.py          # DPolyline dataclass (uses LatLng)
         ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
         ├── api_marker_source.py  # APIMarkerSource — MarkerSource with per-instance fan-out queues
+        ├── api_polyline_source.py # APIPolylineSource — same fan-out pattern for polylines
         ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
         ├── map_events.py         # Typed event/command dataclasses + parse_event()
         ├── command_queue.py      # CommandQueue — fan-out queue for map commands
         ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
+        ├── icon_registry.py      # DivIcon registry (icons.json → JSON for JS)
         └── static/
-            └── dynamic_map.js    # Hooks.DynamicMap (map init + command handlers) + Hooks.DMarkItem
+            ├── dynamic_map.js    # Hooks: DynamicMap, DMarkItem, DPolylineItem + RepeatedMarkers patches
+            └── icons.json        # Named DivIcon definitions
 examples/
-└── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
+├── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
+└── planes/
+    └── mock_planes.py           # Flight simulation — airports, polyline route, followMarker
 ```
 
 ## Adding a new view
@@ -237,6 +243,18 @@ Clients must complete the MCP lifecycle before calling marker methods:
 | `markers.list` | — | Return current `_markers` dict |
 | `map.events.subscribe` | — | Returns `asyncio.Queue` → SSE stream of `JSONRPCNotification` events |
 
+#### Polyline methods
+
+| Method | Params | Effect |
+|---|---|---|
+| `polylines.add` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?` | Add polyline; enqueue `add` op; broadcast `PolylineOpEvent` |
+| `polylines.update` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?` | Update polyline; enqueue `update` op; broadcast `PolylineOpEvent` |
+| `polylines.delete` | `id` | Remove polyline; enqueue `delete` op; broadcast `PolylineOpEvent` |
+| `polylines.list` | — | Return current `_polylines` dict |
+
+`path` is an array of `[lat, lng]` arrays. Polylines crossing the antimeridian
+(±180°) are automatically unwrapped in JS so they draw the short path.
+
 #### Map command methods
 
 These let external clients control the browser's Leaflet map. Each method pushes
@@ -246,15 +264,43 @@ a command to `CommandQueue`; the LiveView tick drains the queue and calls
 | Method | Params | JS effect |
 |---|---|---|
 | `map.setView` | `latLng`, `zoom` | `_map.setView(latLng, zoom)` |
+| `map.panTo` | `latLng` | `_map.setView(latLng, currentZoom)` (instant, keeps zoom) |
 | `map.flyTo` | `latLng`, `zoom` | `_map.flyTo(latLng, zoom)` (animated) |
 | `map.fitBounds` | `corner1`, `corner2` | `_map.fitBounds([corner1, corner2])` |
 | `map.flyToBounds` | `corner1`, `corner2` | `_map.flyToBounds([corner1, corner2])` (animated) |
 | `map.setZoom` | `zoom` | `_map.setZoom(zoom)` |
 | `map.resetView` | — | Reset to US overview `[39.5, -98.35]` zoom 4 |
 | `map.highlightMarker` | `id` | Pan to marker and open its tooltip |
+| `map.highlightPolyline` | `id` | Fit bounds to polyline and open its tooltip |
+| `map.followMarker` | `id` | Auto-pan to marker on every update (see below) |
+| `map.unfollowMarker` | — | Stop auto-panning |
 
 All `latLng`/`corner` params are `[lat, lng]` arrays on the wire; converted to
 `LatLng` at the API boundary in `marker_api.py`.
+
+#### Follow-marker (continuous tracking)
+
+`map.followMarker(id)` tells the JS to auto-pan the map to the specified marker
+whenever `DMarkItem.updated()` fires. The pan happens in the same rendering
+context as the marker position update, so the browser paints both changes in a
+single frame.
+
+This is the correct approach for tracking moving markers. **Do not use
+`map.panTo` for continuous tracking** — `push_event`-based view changes are not
+reliably repainted by browsers without user interaction (a known Leaflet/browser
+compositor issue). `map.panTo` is still available for one-shot pans triggered by
+user action.
+
+```python
+# Start following a marker
+await _send(rpc, "map.followMarker", {"id": "plane1"})
+
+# Stop following
+await _send(rpc, "map.unfollowMarker", {})
+
+# Switch to following a different marker (overwrites previous)
+await _send(rpc, "map.followMarker", {"id": "plane2"})
+```
 
 `APIMarkerSource` and `CommandQueue` use the **bounded-queue fan-out** pattern
 (same as `EventBroadcaster`): each LiveView instance gets its own subscriber
@@ -299,8 +345,9 @@ The flow is:
    `socket.push_event()` for each command
 5. **`dynamic_map.js`** `handleEvent` receivers call the corresponding Leaflet method
 
-Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `FlyToCmd`,
-`FitBoundsCmd`, `FlyToBoundsCmd`, `SetZoomCmd`, `ResetViewCmd`, `HighlightMarkerCmd`).
+Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `PanToCmd`,
+`FlyToCmd`, `FitBoundsCmd`, `FlyToBoundsCmd`, `SetZoomCmd`, `ResetViewCmd`,
+`HighlightMarkerCmd`, `HighlightPolylineCmd`, `FollowMarkerCmd`, `UnfollowMarkerCmd`).
 Each has `to_push_event() -> tuple[str, dict]`.
 
 `CommandQueue` in `command_queue.py` uses the bounded-queue fan-out pattern:
@@ -316,10 +363,11 @@ clients via SSE using `EventBroadcaster` and the `map.events.subscribe` method.
 ### Architecture
 
 1. **Browser → LiveView** — `handle_event()` in `dynamic_map.py` receives
-   `marker-event` and `map-event` from Leaflet hooks, constructs typed event
-   dataclasses, and calls `EventBroadcaster.broadcast()`.
-2. **API → broadcast** — `markers.add/update/delete` handlers in `marker_api.py`
-   broadcast `MarkerOpEvent` after each mutation.
+   `marker-event`, `polyline-event`, and `map-event` from Leaflet hooks,
+   constructs typed event dataclasses, and calls `EventBroadcaster.broadcast()`.
+2. **API → broadcast** — `markers.add/update/delete` and `polylines.add/update/delete`
+   handlers in `marker_api.py` broadcast `MarkerOpEvent`/`PolylineOpEvent` after
+   each mutation.
 3. **EventBroadcaster** — maintains a set of subscriber `asyncio.Queue`s (bounded,
    maxsize=256). `broadcast()` is non-blocking (`put_nowait`); slow consumers are
    dropped. The `JSONRPCNotification` is built once and shared across all subscribers.
@@ -336,7 +384,8 @@ from a notification params dict.
 ```python
 from pyview_map.views.dynamic_map.latlng import LatLng
 from pyview_map.views.dynamic_map.map_events import (
-    MarkerOpEvent, MarkerEvent, MapEvent, BroadcastEvent, parse_event,
+    MarkerOpEvent, MarkerEvent, MapEvent, PolylineOpEvent, PolylineEvent,
+    BroadcastEvent, parse_event,
 )
 ```
 
@@ -358,6 +407,18 @@ MarkerEvent(event="click", id="markers-abc", name="Alpha-01", latLng=LatLng(39.5
 ```python
 MapEvent(event="zoomend", center=LatLng(39.5, -98.3), zoom=6, latLng=None)
 # to_dict() → {"type": "map-event", "event": ..., "center": [lat, lng], "zoom": ..., "latLng": ...}
+```
+
+**`PolylineOpEvent`** — polyline CRUD from the API:
+```python
+PolylineOpEvent(op="add", id="route1", name="Route 1", path=[LatLng(40, -74), LatLng(51, -0.5)])
+# to_dict() → {"type": "polyline-op", "op": ..., "id": ..., "path": [[lat, lng], ...], ...}
+```
+
+**`PolylineEvent`** — browser polyline interaction:
+```python
+PolylineEvent(event="click", id="polylines-route1", name="Route 1", latLng=LatLng(45, -37))
+# to_dict() → {"type": "polyline-event", "event": ..., "id": ..., "name": ..., "latLng": [lat, lng]}
 ```
 
 ### Client subscription example

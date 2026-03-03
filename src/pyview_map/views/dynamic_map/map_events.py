@@ -185,6 +185,14 @@ class SetViewCmd:
 
 
 @dataclass(slots=True)
+class PanToCmd:
+    latLng: LatLng
+
+    def to_push_event(self) -> tuple[str, dict]:
+        return "panTo", {"latLng": self.latLng.to_list()}
+
+
+@dataclass(slots=True)
 class FlyToCmd:
     latLng: LatLng
     zoom: int
@@ -241,4 +249,18 @@ class HighlightPolylineCmd:
         return "highlightPolyline", {"id": self.id}
 
 
-MapCommand = SetViewCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd | HighlightPolylineCmd
+@dataclass(slots=True)
+class FollowMarkerCmd:
+    id: str
+
+    def to_push_event(self) -> tuple[str, dict]:
+        return "followMarker", {"id": self.id}
+
+
+@dataclass(slots=True)
+class UnfollowMarkerCmd:
+    def to_push_event(self) -> tuple[str, dict]:
+        return "unfollowMarker", {}
+
+
+MapCommand = SetViewCmd | PanToCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd | HighlightPolylineCmd | FollowMarkerCmd | UnfollowMarkerCmd

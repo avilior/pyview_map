@@ -1,4 +1,19 @@
-// Patch Leaflet.RepeatedMarkers to also copy _tooltip (plugin only copies _popup).
+// ---------------------------------------------------------------------------
+// Leaflet.RepeatedMarkers patches
+//
+// The plugin has several bugs that cause ghost markers:
+//   1) _addOffsetMarker copies _popup but not _tooltip
+//   2) removeMarker never splices from _masterMarkers
+//   3) createTile uses push() (sequential) but removeMarker uses L.stamp()
+//   4) _removeTile iterates with for(i=0;i<length;i++) which fails on
+//      stamp-indexed sparse arrays — copies are never removed from the map
+//
+// We use plain objects {} instead of arrays for _markersByTile entries so
+// that all iteration (removeMarker, _removeTile, in-place updates) works
+// correctly with stamp-based keys.
+// ---------------------------------------------------------------------------
+
+// 1) Copy _tooltip to copies (plugin only copies _popup).
 const _origAddOffset = L.GridLayer.RepeatedMarkers.prototype._addOffsetMarker;
 L.GridLayer.RepeatedMarkers.prototype._addOffsetMarker = function(marker, longitudeOffset) {
   const copy = _origAddOffset.call(this, marker, longitudeOffset);
@@ -8,6 +23,47 @@ L.GridLayer.RepeatedMarkers.prototype._addOffsetMarker = function(marker, longit
   return copy;
 };
 
+// 2) Fix removeMarker to actually splice from _masterMarkers.
+L.GridLayer.RepeatedMarkers.prototype.removeMarker = function(marker) {
+  var i = this._masterMarkers.indexOf(marker);
+  if (i === -1) return false;
+  this._masterMarkers.splice(i, 1);
+  var masterMarkerId = L.stamp(marker);
+  for (var key in this._markersByTile) {
+    var copy = this._markersByTile[key][masterMarkerId];
+    if (copy && this._map) copy.remove();
+    delete this._markersByTile[key][masterMarkerId];
+  }
+};
+
+// 3) Fix createTile to use stamp-based indexing with plain objects.
+L.GridLayer.RepeatedMarkers.prototype.createTile = function(coords) {
+  var key = this._tileCoordsToKey(coords);
+  var longitudeOffset = coords.x * 360;
+  this._markersByTile[key] = {};            // plain object, not array
+  this._offsetsByTile[key] = longitudeOffset;
+  for (var i = 0, l = this._masterMarkers.length; i < l; i++) {
+    var marker = this._masterMarkers[i];
+    this._markersByTile[key][L.stamp(marker)] = this._addOffsetMarker(marker, longitudeOffset);
+  }
+  return L.DomUtil.create("div");
+};
+
+// 4) Fix _removeTile to iterate stamp-keyed objects instead of sequential arrays.
+L.GridLayer.RepeatedMarkers.prototype._removeTile = function(key) {
+  var copies = this._markersByTile[key];
+  if (copies) {
+    for (var stampId in copies) {
+      if (copies[stampId] && this._map) {
+        copies[stampId].removeFrom(this._map);
+      }
+    }
+  }
+  delete this._markersByTile[key];
+  delete this._offsetsByTile[key];
+  L.GridLayer.prototype._removeTile.call(this, key);
+};
+
 // Shared Leaflet map instance and marker registry.
 // DynamicMap hook (the map <div>) writes _map once on mount.
 // DMarkItem hooks (the invisible stream sentinels) read it.
@@ -15,6 +71,11 @@ let _map = null;
 let _repeatedMarkers = null; // L.gridLayer.repeatedMarkers — handles world-copy duplication
 const _markers = new Map(); // dom_id -> L.Marker (original; plugin manages copies)
 const _polylines = new Map(); // dom_id -> L.Polyline
+
+// Follow-marker: when set, DMarkItem.updated() auto-pans the map to this
+// marker.  This avoids the handleEvent rendering issue where setView changes
+// are not painted until mouse interaction.
+let _followMarkerId = null; // dom_id of marker to follow, e.g. "markers-plane1"
 
 // Hooks that mounted before the map was ready queue themselves here.
 // DynamicMap.mounted() flushes them once _map is initialised.
@@ -67,6 +128,29 @@ function _addMarkerFromEl(el, hookCtx) {
   const heading = el.dataset.heading;
   const speed = el.dataset.speed;
   const domId = el.id;
+
+  // Guard: PyView's Stream.insert(update_only=True) doesn't transmit the
+  // flag over the wire, so the client may fire mounted() for an item that
+  // already exists.  Treat as an in-place update instead of adding a duplicate.
+  if (_markers.has(domId)) {
+    const marker = _markers.get(domId);
+    const icon = _makeIcon(iconName, heading);
+    marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
+    marker.setIcon(icon);
+    marker.options.dmarkIcon = iconName;
+    marker.options.dmarkHeading = heading;
+    marker.options.dmarkSpeed = speed;
+    const stampId = L.stamp(marker);
+    for (const key in _repeatedMarkers._markersByTile) {
+      const copy = _repeatedMarkers._markersByTile[key][stampId];
+      if (copy) {
+        const offset = _repeatedMarkers._offsetsByTile[key];
+        copy.setLatLng([parseFloat(lat), parseFloat(lng) + offset]);
+        copy.setIcon(_makeIcon(iconName, heading));
+      }
+    }
+    return;
+  }
 
   const icon = _makeIcon(iconName, heading);
 
@@ -177,7 +261,6 @@ const MAP_EVENTS = [
   "locationfound", "locationerror",
   "popupopen", "popupclose",
   "tooltipopen", "tooltipclose",
-  "layeradd", "layerremove",
 ];
 
 window.Hooks.DynamicMap = {
@@ -221,6 +304,15 @@ window.Hooks.DynamicMap = {
 
     // -- Map command handlers from server push_event -------------------------
     this.handleEvent("setView", ({latLng, zoom}) => _map.setView(latLng, zoom));
+    this.handleEvent("panTo", ({latLng}) => {
+      _map.setView(latLng, _map.getZoom(), {animate: false});
+    });
+    this.handleEvent("followMarker", ({id}) => {
+      _followMarkerId = id ? `markers-${id}` : null;
+    });
+    this.handleEvent("unfollowMarker", () => {
+      _followMarkerId = null;
+    });
     this.handleEvent("flyTo", ({latLng, zoom}) => _map.flyTo(latLng, zoom));
     this.handleEvent("fitBounds", ({corner1, corner2}) => _map.fitBounds([corner1, corner2]));
     this.handleEvent("flyToBounds", ({corner1, corner2}) => _map.flyToBounds([corner1, corner2]));
@@ -285,19 +377,40 @@ window.Hooks.DMarkItem = {
   updated() {
     const marker = _markers.get(this.el.id);
     if (!marker) return;
-    const { lat, lng } = this.el.dataset;
+    const lat = parseFloat(this.el.dataset.lat);
+    const lng = parseFloat(this.el.dataset.lng);
     const newIcon = this.el.dataset.icon || "default";
     const heading = this.el.dataset.heading;
     const speed = this.el.dataset.speed;
+    const icon = _makeIcon(newIcon, heading);
 
-    marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
-    marker.setIcon(_makeIcon(newIcon, heading));
+    // Update the master marker in place
+    marker.setLatLng([lat, lng]);
+    marker.setIcon(icon);
     marker.options.dmarkIcon = newIcon;
     marker.options.dmarkHeading = heading;
     marker.options.dmarkSpeed = speed;
 
-    // Redraw the layer so copies pick up the new position/icon
-    _repeatedMarkers.redraw();
+    // Update all tile copies in place — avoids the remove/add cycle that
+    // races with tile recreation triggered by panTo/setView.
+    const stampId = L.stamp(marker);
+    for (const key in _repeatedMarkers._markersByTile) {
+      const copy = _repeatedMarkers._markersByTile[key][stampId];
+      if (copy) {
+        const offset = _repeatedMarkers._offsetsByTile[key];
+        copy.setLatLng([lat, lng + offset]);
+        copy.setIcon(_makeIcon(newIcon, heading));
+        if (marker._tooltip) {
+          if (copy._tooltip) copy.unbindTooltip();
+          copy.bindTooltip(marker._tooltip._content, marker._tooltip.options);
+        }
+      }
+    }
+    // Auto-pan if this marker is being followed
+    if (this.el.id === _followMarkerId) {
+      _map.setView([lat, lng], _map.getZoom(), {animate: false});
+    }
+
     _log("update", `→ ${marker.options.dmarkName} moved`);
   },
 

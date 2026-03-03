@@ -14,13 +14,16 @@ from pyview_map.views.dynamic_map.map_events import (
     FitBoundsCmd,
     FlyToBoundsCmd,
     FlyToCmd,
+    FollowMarkerCmd,
     HighlightMarkerCmd,
     HighlightPolylineCmd,
     MarkerOpEvent,
+    PanToCmd,
     PolylineOpEvent,
     ResetViewCmd,
     SetViewCmd,
     SetZoomCmd,
+    UnfollowMarkerCmd,
 )
 
 
@@ -67,6 +70,12 @@ def map_set_view(latLng: list[float], zoom: int) -> dict:
     return {"ok": True}
 
 
+@jrpc_service.request("map.panTo")
+def map_pan_to(latLng: list[float]) -> dict:
+    CommandQueue.push(PanToCmd(latLng=LatLng.from_list(latLng)))
+    return {"ok": True}
+
+
 @jrpc_service.request("map.flyTo")
 def map_fly_to(latLng: list[float], zoom: int) -> dict:
     CommandQueue.push(FlyToCmd(latLng=LatLng.from_list(latLng), zoom=zoom))
@@ -106,6 +115,18 @@ def map_highlight_marker(id: str) -> dict:
 @jrpc_service.request("map.highlightPolyline")
 def map_highlight_polyline(id: str) -> dict:
     CommandQueue.push(HighlightPolylineCmd(id=id))
+    return {"ok": True}
+
+
+@jrpc_service.request("map.followMarker")
+def map_follow_marker(id: str) -> dict:
+    CommandQueue.push(FollowMarkerCmd(id=id))
+    return {"ok": True}
+
+
+@jrpc_service.request("map.unfollowMarker")
+def map_unfollow_marker() -> dict:
+    CommandQueue.push(UnfollowMarkerCmd())
     return {"ok": True}
 
 

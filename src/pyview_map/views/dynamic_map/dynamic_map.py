@@ -124,66 +124,67 @@ class DynamicMapLiveView(LiveView[DynamicMapContext]):
         if event.name != "tick":
             return
 
-        update = self._source.next_update()
-        op = update["op"]
-
-        if op == "noop":
-            pass
-        elif op == "add":
-            socket.context.markers.insert(
-                DMarker(
-                    id=update["id"], name=update["name"],
-                    lat_lng=LatLng.from_list(update["latLng"]),
-                    icon=update.get("icon", "default"),
-                    heading=update.get("heading"),
-                    speed=update.get("speed"),
+        # Drain all pending marker updates
+        while True:
+            update = self._source.next_update()
+            op = update["op"]
+            if op == "noop":
+                break
+            elif op == "add":
+                socket.context.markers.insert(
+                    DMarker(
+                        id=update["id"], name=update["name"],
+                        lat_lng=LatLng.from_list(update["latLng"]),
+                        icon=update.get("icon", "default"),
+                        heading=update.get("heading"),
+                        speed=update.get("speed"),
+                    )
                 )
-            )
-        elif op == "delete":
-            socket.context.markers.delete_by_id(f"markers-{update['id']}")
-        elif op == "update":
-            socket.context.markers.insert(
-                DMarker(
-                    id=update["id"], name=update["name"],
-                    lat_lng=LatLng.from_list(update["latLng"]),
-                    icon=update.get("icon", "default"),
-                    heading=update.get("heading"),
-                    speed=update.get("speed"),
-                ),
-                update_only=True,
-            )
-
-        # Drain polyline updates
-        pl_update = self._polyline_source.next_update()
-        pl_op = pl_update["op"]
-
-        if pl_op == "noop":
-            pass
-        elif pl_op == "add":
-            socket.context.polylines.insert(
-                DPolyline(
-                    id=pl_update["id"], name=pl_update["name"],
-                    path=[LatLng.from_list(p) for p in pl_update["path"]],
-                    color=pl_update.get("color", "#3388ff"),
-                    weight=pl_update.get("weight", 3),
-                    opacity=pl_update.get("opacity", 1.0),
-                    dash_array=pl_update.get("dashArray"),
+            elif op == "delete":
+                socket.context.markers.delete_by_id(f"markers-{update['id']}")
+            elif op == "update":
+                socket.context.markers.insert(
+                    DMarker(
+                        id=update["id"], name=update["name"],
+                        lat_lng=LatLng.from_list(update["latLng"]),
+                        icon=update.get("icon", "default"),
+                        heading=update.get("heading"),
+                        speed=update.get("speed"),
+                    ),
+                    update_only=True,
                 )
-            )
-        elif pl_op == "delete":
-            socket.context.polylines.delete_by_id(f"polylines-{pl_update['id']}")
-        elif pl_op == "update":
-            socket.context.polylines.insert(
-                DPolyline(
-                    id=pl_update["id"], name=pl_update["name"],
-                    path=[LatLng.from_list(p) for p in pl_update["path"]],
-                    color=pl_update.get("color", "#3388ff"),
-                    weight=pl_update.get("weight", 3),
-                    opacity=pl_update.get("opacity", 1.0),
-                    dash_array=pl_update.get("dashArray"),
-                ),
-                update_only=True,
-            )
+
+        # Drain all pending polyline updates
+        while True:
+            pl_update = self._polyline_source.next_update()
+            pl_op = pl_update["op"]
+            if pl_op == "noop":
+                break
+            elif pl_op == "add":
+                socket.context.polylines.insert(
+                    DPolyline(
+                        id=pl_update["id"], name=pl_update["name"],
+                        path=[LatLng.from_list(p) for p in pl_update["path"]],
+                        color=pl_update.get("color", "#3388ff"),
+                        weight=pl_update.get("weight", 3),
+                        opacity=pl_update.get("opacity", 1.0),
+                        dash_array=pl_update.get("dashArray"),
+                    )
+                )
+            elif pl_op == "delete":
+                socket.context.polylines.delete_by_id(f"polylines-{pl_update['id']}")
+            elif pl_op == "update":
+                socket.context.polylines.insert(
+                    DPolyline(
+                        id=pl_update["id"], name=pl_update["name"],
+                        path=[LatLng.from_list(p) for p in pl_update["path"]],
+                        color=pl_update.get("color", "#3388ff"),
+                        weight=pl_update.get("weight", 3),
+                        opacity=pl_update.get("opacity", 1.0),
+                        dash_array=pl_update.get("dashArray"),
+                    ),
+                    update_only=True,
+                )
 
         # Drain pending map commands from this view's queue
         while True:
