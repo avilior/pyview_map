@@ -27,14 +27,6 @@ from typing import Tuple
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"
 
-# Continental US bounding box (same as MockGenerator)
-# _LAT = (25.0, 49.0)
-# _LNG = (-125.0, -66.0)
-
-# _CALLSIGNS = [
-#     "Alpha", "Bravo", "Charlie", "Delta", "Echo",
-#     "Foxtrot", "Golf", "Hotel", "India", "Juliet",
-# ]
 
 # _ICONS = ["default", "red-dot", "green-dot", "warning", "vehicle", "airplane"]
 
@@ -141,38 +133,41 @@ async def listen_events(rpc: ClientRPC) -> None:
 #
 #     print("--- Command demo complete ---\n")
 
+# @dataclass(kw_only=True)
+# class LatLng:
+#     lat: float
+#     lng: float
 
 @dataclass
 class Airport:
     name: str
-    lat: float
-    lng: float
+    latlng: LatLng
     marker: DMarker = None
 
 airports = [
-    Airport(name="JFK", lat=40.64, lng=-73.78),
-    Airport(name="LHR", lat=51.47, lng=-0.46),
-    Airport(name="CDG", lat=49.01, lng=2.51),
-    Airport(name="AMS", lat=52.37, lng=4.90),
-    Airport(name="EWR", lat=40.69, lng=-74.18),
-    Airport(name="IAD", lat=40.63, lng=-73.75),
-    Airport(name="LAX", lat=33.94, lng=-118.40),
-    Airport(name="DEN", lat=48.13, lng=11.58),
-    Airport(name="SFO", lat=37.62, lng=-122.38),
-    Airport(name="SEA", lat=60.19, lng=24.94),
-    Airport(name="HKG", lat=22.30, lng=114.17),
-    Airport(name="JNB", lat=40.71, lng=-74.01),
-    Airport(name="LGW", lat=17.38, lng=103.85),
-    Airport(name="SIN", lat=1.35, lng=103.86),
-    Airport(name="SYD", lat=-33.86, lng=151.20),
-    Airport(name="YUL", lat=45.4577, lng=-73.7497),
-    Airport(name="YOW", lat=45.3202, lng=-75.6656),
-    Airport(name="YYZ", lat=43.6798, lng=-79.6284),
-    Airport(name="YYC", lat=51.1219, lng=-114.0153),
-    Airport(name="YVR", lat=49.1951, lng=-123.1840),
-    Airport(name="YEG", lat=53.3181, lng=-113.7112),
-    Airport(name="YWG", lat=49.9097, lng=-97.2272),
-    Airport(name="YHZ", lat=44.8808, lng=-63.5086),
+    Airport(name="JFK", latlng=LatLng(lat=40.64, lng=-73.78)),
+    Airport(name="LHR", latlng=LatLng(lat=51.47, lng=-0.46)),
+    Airport(name="CDG", latlng=LatLng(lat=49.01, lng=2.51)),
+    Airport(name="AMS", latlng=LatLng(lat=52.37, lng=4.90)),
+    Airport(name="EWR", latlng=LatLng(lat=40.69, lng=-74.18)),
+    Airport(name="IAD", latlng=LatLng(lat=40.63, lng=-73.75)),
+    Airport(name="LAX", latlng=LatLng(lat=33.94, lng=-118.40)),
+    Airport(name="DEN", latlng=LatLng(lat=48.13, lng=11.58)),
+    Airport(name="SFO", latlng=LatLng(lat=37.62, lng=-122.38)),
+    Airport(name="SEA", latlng=LatLng(lat=60.19, lng=24.94)),
+    Airport(name="HKG", latlng=LatLng(lat=22.30, lng=114.17)),
+    Airport(name="JNB", latlng=LatLng(lat=40.71, lng=-74.01)),
+    Airport(name="LGW", latlng=LatLng(lat=17.38, lng=103.85)),
+    Airport(name="SIN", latlng=LatLng(lat=1.35, lng=103.86)),
+    Airport(name="SYD", latlng=LatLng(lat=-33.86, lng=151.20)),
+    Airport(name="YUL", latlng=LatLng(lat=45.4577, lng=-73.7497)),
+    Airport(name="YOW", latlng=LatLng(lat=45.3202, lng=-75.6656)),
+    Airport(name="YYZ", latlng=LatLng(lat=43.6798, lng=-79.6284)),
+    Airport(name="YYC", latlng=LatLng(lat=51.1219, lng=-114.0153)),
+    Airport(name="YVR", latlng=LatLng(lat=49.1951, lng=-123.1840)),
+    Airport(name="YEG", latlng=LatLng(lat=53.3181, lng=-113.7112)),
+    Airport(name="YWG", latlng=LatLng(lat=49.9097, lng=-97.2272)),
+    Airport(name="YHZ", latlng=LatLng(lat=44.8808, lng=-63.5086)),
 ]
 
 AIRPORT_REGISTRY= {ap.name:ap for ap in airports}
@@ -180,7 +175,7 @@ AIRPORT_REGISTRY= {ap.name:ap for ap in airports}
 
 def init_airport_markers():
     for id, ap in enumerate(airports):
-        marker = DMarker(id=f"ap_{id+1}_{ap.name}", name=ap.name, lat_lng=LatLng(ap.lat, ap.lng),icon="black-square",)
+        marker = DMarker(id=f"ap_{id+1}_{ap.name}", name=ap.name, lat_lng=ap.latlng, icon="black-square",)
         ap.marker = marker
 
 
@@ -223,23 +218,21 @@ async def main() -> None:
         # create a flight
 
         planned_route = [t for t in great_circle_flight_generator(
-                            lat1_deg = AIRPORT_REGISTRY["YOW"].lat,
-                            lon1_deg = AIRPORT_REGISTRY["YOW"].lng,
-                            lat2_deg = AIRPORT_REGISTRY["YVR"].lat,
-                            lon2_deg = AIRPORT_REGISTRY["YVR"].lng,
+                            from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
+                            to_latlng= AIRPORT_REGISTRY["YVR"].latlng,
                             ground_speed_knots = 500,
                             start_time = datetime.now(timezone.utc),
                             step=timedelta(minutes=1))]
 
+        flight_duration = planned_route[-1][0] - planned_route[0][0]
+
         heading = bearing_deg(
-                lat1_deg = AIRPORT_REGISTRY["YOW"].lat,
-                lon1_deg = AIRPORT_REGISTRY["YOW"].lng,
-                lat2_deg = AIRPORT_REGISTRY["YVR"].lat,
-                lon2_deg = AIRPORT_REGISTRY["YVR"].lng)
+                from_latlng= AIRPORT_REGISTRY["YOW"].latlng,
+                to_latlng= AIRPORT_REGISTRY["YVR"].latlng)
 
         flight = Flight(
             id="flight1",
-            plane=Plane(id="plane1", marker=DMarker(id="plane1", name="plane1", lat_lng=LatLng(AIRPORT_REGISTRY["YOW"].lat, AIRPORT_REGISTRY["YOW"].lng), icon="airplane", speed=500, heading=heading)),
+            plane=Plane(id="plane1", marker=DMarker(id="plane1", name="plane1", lat_lng=AIRPORT_REGISTRY["YOW"].latlng, icon="airplane", speed=500, heading=heading)),
             origin=AIRPORT_REGISTRY["YOW"],
             destination=AIRPORT_REGISTRY["YVR"],
             departure_time=datetime.now(timezone.utc),
