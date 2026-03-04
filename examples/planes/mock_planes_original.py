@@ -1,15 +1,10 @@
 """mock_planes.py — flight simulation client for the /dmap dynamic map.
 
-Run this while the server is up to see a plane fly from Ottawa to Montreal:
+Run this while the server is up to see a plane fly from Ottawa to Sydney:
 
     uv run python examples/planes/mock_planes.py
-
-To target a specific map instance (e.g. on the /mmap multi-map page):
-
-    uv run python examples/planes/mock_planes.py --map-id left
 """
 
-import argparse
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, Self
@@ -36,12 +31,9 @@ AUTH_TOKEN = "tok-acme-001"
 # Helper
 # ---------------------------------------------------------------------------
 
-async def _send(rpc: ClientRPC, method: str, params: dict | None = None, *, map_id: str | None = None) -> None:
+async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None:
     """Fire a JSON-RPC request and consume the response."""
-    p = dict(params) if params else {}
-    if map_id is not None:
-        p["map_id"] = map_id
-    req = JSONRPCRequest(method=method, params=p)
+    req = JSONRPCRequest(method=method, params=params or {})
     async for _ in rpc.send_request(req):
         pass
 
@@ -153,9 +145,9 @@ class Flight:
             last_position = origin_airport.latlng,
         )
 
-    async def start(self, rpc, *, map_id: str | None = None):
+    async def start(self, rpc):
 
-        await _send(rpc, "markers.add", self.plane.marker.to_dict(), map_id=map_id)
+        await _send(rpc, "markers.add", self.plane.marker.to_dict())
 
         planned_route_dpolyline = DPolyline(
             id="flight1_route",
@@ -165,9 +157,9 @@ class Flight:
             weight=3,
             opacity=1.0,
         )
-        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict(), map_id=map_id)
-        # await _send(rpc, "map.followMarker", {"id": "plane1"}, map_id=map_id)
-        print(f"Added plane{' (map_id=' + map_id + ')' if map_id else ''}")
+        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict())
+        # await _send(rpc, "map.followMarker", {"id": "plane1"})
+        print("Added plane — following plane1")
 
         while True:
 
@@ -186,11 +178,11 @@ class Flight:
             self.plane.marker.lat_lng = current_latlng
             self.last_position = current_latlng
 
-            await _send(rpc, "markers.update", self.plane.marker.to_dict(), map_id=map_id)
+            await _send(rpc, "markers.update", self.plane.marker.to_dict())
 
             # if the plane arrived at destination break
             if current_latlng == self.destination.latlng:
-                print(f"The flight arrived at destination: {datetime.now(timezone.utc)}")
+                print(F"The flight arrived at destination: {datetime.now(timezone.utc)}")
                 break
 
 
@@ -231,11 +223,6 @@ async def listen_events(rpc: ClientRPC) -> None:
 # ---------------------------------------------------------------------------
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Flight simulation client")
-    parser.add_argument("--map-id", default=None, help="Target a specific map instance (e.g. 'left')")
-    args = parser.parse_args()
-    map_id: str | None = args.map_id
-
     init_airport_markers()
 
     all_tasks: list[asyncio.Task] = []
@@ -245,23 +232,19 @@ async def main() -> None:
         all_tasks.append(asyncio.create_task(listen_events(rpc)))
 
         # Add airport markers (batched)
-        batch_req = []
-        for ap in airports:
-            params = ap.marker.to_dict()
-            if map_id is not None:
-                params["map_id"] = map_id
-            batch_req.append(JSONRPCRequest(method="markers.add", params=params))
+        batch_req = [JSONRPCRequest(method="markers.add", params=ap.marker.to_dict()) for ap in airports]
         async for resp in rpc.send_request(batch_req):
             pass
-        print(f"Rendered airports{' (map_id=' + map_id + ')' if map_id else ''}")
+        print("Rendered airports")
 
         # Create and display flight
 
+        flight_tasks: list[Flight] = []
         try:
 
             flight = Flight.build_flight("YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500)
 
-            all_tasks.append(asyncio.create_task(flight.start(rpc, map_id=map_id)))
+            all_tasks.append(asyncio.create_task(flight.start(rpc)))
 
             while True:
                 await asyncio.sleep(1)

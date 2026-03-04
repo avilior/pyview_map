@@ -64,39 +64,40 @@ L.GridLayer.RepeatedMarkers.prototype._removeTile = function(key) {
   L.GridLayer.prototype._removeTile.call(this, key);
 };
 
-// Shared Leaflet map instance and marker registry.
-// DynamicMap hook (the map <div>) writes _map once on mount.
-// DMarkItem hooks (the invisible stream sentinels) read it.
-let _map = null;
-let _repeatedMarkers = null; // L.gridLayer.repeatedMarkers — handles world-copy duplication
-const _markers = new Map(); // dom_id -> L.Marker (original; plugin manages copies)
-const _polylines = new Map(); // dom_id -> L.Polyline
-
-// Follow-marker: when set, DMarkItem.updated() auto-pans the map to this
-// marker.  This avoids the handleEvent rendering issue where setView changes
-// are not painted until mouse interaction.
-let _followMarkerId = null; // dom_id of marker to follow, e.g. "markers-plane1"
-
-// Hooks that mounted before the map was ready queue themselves here.
-// DynamicMap.mounted() flushes them once _map is initialised.
-const _pending = []; // Array of { el, hookCtx }
-const _pendingPolylines = []; // Array of { el, hookCtx }
-
 // ---------------------------------------------------------------------------
-// Icon registry — parsed from the data-icon-registry attribute on #dmap
+// MapInstance — per-map state container
+//
+// Each DynamicMap hook creates a MapInstance. DMarkItem / DPolylineItem hooks
+// find their instance via closest('[data-map-instance]').
 // ---------------------------------------------------------------------------
-let _iconRegistry = null;
 
-function _getIconRegistry() {
-  if (_iconRegistry) return _iconRegistry;
-  const el = document.getElementById("dmap");
-  if (el && el.dataset.iconRegistry) {
-    try { _iconRegistry = JSON.parse(el.dataset.iconRegistry); } catch (_) { _iconRegistry = {}; }
-  } else {
-    _iconRegistry = {};
+class MapInstance {
+  constructor(mapElId) {
+    this.mapElId = mapElId;
+    this.map = null;
+    this.repeatedMarkers = null;
+    this.markers = new Map();     // dom_id -> L.Marker
+    this.polylines = new Map();   // dom_id -> L.Polyline
+    this.followMarkerId = null;   // dom_id of marker to follow
+    this.pendingMarkers = [];     // queued DMarkItem hooks before map ready
+    this.pendingPolylines = [];   // queued DPolylineItem hooks before map ready
+    this.iconRegistry = null;
   }
-  return _iconRegistry;
+
+  getIconRegistry() {
+    if (this.iconRegistry) return this.iconRegistry;
+    const el = document.getElementById(this.mapElId);
+    if (el && el.dataset.iconRegistry) {
+      try { this.iconRegistry = JSON.parse(el.dataset.iconRegistry); } catch (_) { this.iconRegistry = {}; }
+    } else {
+      this.iconRegistry = {};
+    }
+    return this.iconRegistry;
+  }
 }
+
+// Global registry of MapInstance objects, keyed by the map element ID.
+const _instances = new Map();
 
 const _FALLBACK_ICON_DEF = {
   html: `<div style="background:#2563eb;border:2px solid #fff;border-radius:50%;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
@@ -107,8 +108,8 @@ const _FALLBACK_ICON_DEF = {
 
 // Build a DivIcon, optionally baking heading rotation into the HTML so that
 // copies created by Leaflet.RepeatedMarkers inherit the transform.
-function _makeIcon(iconName, heading) {
-  const reg = _getIconRegistry();
+function _makeIcon(instance, iconName, heading) {
+  const reg = instance.getIconRegistry();
   const def = reg[iconName] || reg["default"] || _FALLBACK_ICON_DEF;
   let html = def.html;
   if (heading != null && heading !== "" && heading !== "None") {
@@ -122,7 +123,22 @@ function _makeIcon(iconName, heading) {
   });
 }
 
-function _addMarkerFromEl(el, hookCtx) {
+// ---------------------------------------------------------------------------
+// Find the MapInstance for a hook element by walking up to the nearest
+// [data-map-instance] ancestor.
+// ---------------------------------------------------------------------------
+
+function _findInstance(el) {
+  const wrapper = el.closest("[data-map-instance]");
+  if (!wrapper) return null;
+  return _instances.get(wrapper.dataset.mapInstance) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Marker / polyline helpers
+// ---------------------------------------------------------------------------
+
+function _addMarkerFromEl(instance, el, hookCtx) {
   const { name, lat, lng } = el.dataset;
   const iconName = el.dataset.icon || "default";
   const heading = el.dataset.heading;
@@ -132,27 +148,27 @@ function _addMarkerFromEl(el, hookCtx) {
   // Guard: PyView's Stream.insert(update_only=True) doesn't transmit the
   // flag over the wire, so the client may fire mounted() for an item that
   // already exists.  Treat as an in-place update instead of adding a duplicate.
-  if (_markers.has(domId)) {
-    const marker = _markers.get(domId);
-    const icon = _makeIcon(iconName, heading);
+  if (instance.markers.has(domId)) {
+    const marker = instance.markers.get(domId);
+    const icon = _makeIcon(instance, iconName, heading);
     marker.setLatLng([parseFloat(lat), parseFloat(lng)]);
     marker.setIcon(icon);
     marker.options.dmarkIcon = iconName;
     marker.options.dmarkHeading = heading;
     marker.options.dmarkSpeed = speed;
     const stampId = L.stamp(marker);
-    for (const key in _repeatedMarkers._markersByTile) {
-      const copy = _repeatedMarkers._markersByTile[key][stampId];
+    for (const key in instance.repeatedMarkers._markersByTile) {
+      const copy = instance.repeatedMarkers._markersByTile[key][stampId];
       if (copy) {
-        const offset = _repeatedMarkers._offsetsByTile[key];
+        const offset = instance.repeatedMarkers._offsetsByTile[key];
         copy.setLatLng([parseFloat(lat), parseFloat(lng) + offset]);
-        copy.setIcon(_makeIcon(iconName, heading));
+        copy.setIcon(_makeIcon(instance, iconName, heading));
       }
     }
     return;
   }
 
-  const icon = _makeIcon(iconName, heading);
+  const icon = _makeIcon(instance, iconName, heading);
 
   // Create marker but do NOT add to _map — the RepeatedMarkers layer
   // handles rendering in every visible world copy.
@@ -178,9 +194,9 @@ function _addMarkerFromEl(el, hookCtx) {
     });
   });
 
-  _repeatedMarkers.addMarker(marker);
-  _markers.set(domId, marker);
-  _log("add", `＋ ${name} appeared`);
+  instance.repeatedMarkers.addMarker(marker);
+  instance.markers.set(domId, marker);
+  _log(instance, "add", `＋ ${name} appeared`);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,10 +205,6 @@ function _addMarkerFromEl(el, hookCtx) {
 
 const POLYLINE_EVENTS = ["click", "dblclick", "contextmenu", "mouseover", "mouseout"];
 
-// Unwrap longitudes so polylines crossing the antimeridian (±180°) take the
-// short path instead of wrapping the long way around the globe.  Coordinates
-// may extend beyond [-180, 180] — that's intentional; the repeated markers
-// ensure there's always a visible marker at each endpoint.
 function _unwrapPath(path) {
   if (path.length < 2) return path;
   const result = [[path[0][0], path[0][1]]];
@@ -219,14 +231,14 @@ function _parsePolylineOpts(el) {
   return opts;
 }
 
-function _addPolylineFromEl(el, hookCtx) {
+function _addPolylineFromEl(instance, el, hookCtx) {
   const { name } = el.dataset;
   const domId = el.id;
   const path = _unwrapPath(JSON.parse(el.dataset.path));
   const opts = _parsePolylineOpts(el);
 
   const polyline = L.polyline(path, opts)
-    .addTo(_map)
+    .addTo(instance.map)
     .bindTooltip(name, { sticky: true });
 
   POLYLINE_EVENTS.forEach((evtName) => {
@@ -241,8 +253,8 @@ function _addPolylineFromEl(el, hookCtx) {
     });
   });
 
-  _polylines.set(domId, polyline);
-  _log("add", `＋ polyline "${name}" added`);
+  instance.polylines.set(domId, polyline);
+  _log(instance, "add", `＋ polyline "${name}" added`);
 }
 
 // ---------------------------------------------------------------------------
@@ -252,8 +264,6 @@ function _addPolylineFromEl(el, hookCtx) {
 window.Hooks = window.Hooks ?? {};
 
 // Map events pushed to the server (with their payload builders).
-// High-frequency continuous events (move, zoom, movestart, zoomstart) are
-// omitted — they fire on every animation frame during pan/zoom.
 const MAP_EVENTS = [
   "click", "dblclick", "contextmenu",
   "mouseover", "mouseout",
@@ -265,80 +275,84 @@ const MAP_EVENTS = [
 
 window.Hooks.DynamicMap = {
   mounted() {
-    _map = L.map(this.el).setView([39.5, -98.35], 4);
+    const instance = new MapInstance(this.el.id);
+    _instances.set(this.el.id, instance);
+
+    instance.map = L.map(this.el).setView([39.5, -98.35], 4);
 
     // Repeated markers layer — renders marker copies in every world copy
-    _repeatedMarkers = L.gridLayer.repeatedMarkers().addTo(_map);
+    instance.repeatedMarkers = L.gridLayer.repeatedMarkers().addTo(instance.map);
 
-    // Flush any DMarkItem hooks that mounted before _map was ready
-    while (_pending.length) {
-      const { el, hookCtx } = _pending.shift();
-      _addMarkerFromEl(el, hookCtx);
+    // Flush any DMarkItem hooks that mounted before the map was ready
+    while (instance.pendingMarkers.length) {
+      const { el, hookCtx } = instance.pendingMarkers.shift();
+      _addMarkerFromEl(instance, el, hookCtx);
     }
-    // Flush any DPolylineItem hooks that mounted before _map was ready
-    while (_pendingPolylines.length) {
-      const { el, hookCtx } = _pendingPolylines.shift();
-      _addPolylineFromEl(el, hookCtx);
+    // Flush any DPolylineItem hooks that mounted before the map was ready
+    while (instance.pendingPolylines.length) {
+      const { el, hookCtx } = instance.pendingPolylines.shift();
+      _addPolylineFromEl(instance, el, hookCtx);
     }
+
     L.tileLayer("http://{s}.tile.osm.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
       maxZoom: 18,
-    }).addTo(_map);
+    }).addTo(instance.map);
 
     // Day/night terminator — updates every minute as the sun moves
-    const terminator = L.terminator({ fillOpacity: 0.25 }).addTo(_map);
+    const terminator = L.terminator({ fillOpacity: 0.25 }).addTo(instance.map);
     setInterval(() => terminator.setTime(new Date()), 60_000);
 
     // Wire all low-frequency map events
     MAP_EVENTS.forEach((evtName) => {
-      _map.on(evtName, (e) => {
-        const center = _map.getCenter();
+      instance.map.on(evtName, (e) => {
+        const center = instance.map.getCenter();
         this.pushEvent("map-event", {
           event: evtName,
           latLng: e.latlng ? [e.latlng.lat, e.latlng.lng] : null,
           center: [center.lat, center.lng],
-          zoom: _map.getZoom(),
+          zoom: instance.map.getZoom(),
         });
       });
     });
 
     // -- Map command handlers from server push_event -------------------------
-    this.handleEvent("setView", ({latLng, zoom}) => _map.setView(latLng, zoom));
+    this.handleEvent("setView", ({latLng, zoom}) => instance.map.setView(latLng, zoom));
     this.handleEvent("panTo", ({latLng}) => {
-      _map.setView(latLng, _map.getZoom(), {animate: false});
+      instance.map.setView(latLng, instance.map.getZoom(), {animate: false});
     });
     this.handleEvent("followMarker", ({id}) => {
-      _followMarkerId = id ? `markers-${id}` : null;
+      instance.followMarkerId = id ? `${instance.mapElId}-markers-${id}` : null;
     });
     this.handleEvent("unfollowMarker", () => {
-      _followMarkerId = null;
+      instance.followMarkerId = null;
     });
-    this.handleEvent("flyTo", ({latLng, zoom}) => _map.flyTo(latLng, zoom));
-    this.handleEvent("fitBounds", ({corner1, corner2}) => _map.fitBounds([corner1, corner2]));
-    this.handleEvent("flyToBounds", ({corner1, corner2}) => _map.flyToBounds([corner1, corner2]));
-    this.handleEvent("setZoom", ({zoom}) => _map.setZoom(zoom));
-    this.handleEvent("resetView", () => _map.setView([39.5, -98.35], 4));
+    this.handleEvent("flyTo", ({latLng, zoom}) => instance.map.flyTo(latLng, zoom));
+    this.handleEvent("fitBounds", ({corner1, corner2}) => instance.map.fitBounds([corner1, corner2]));
+    this.handleEvent("flyToBounds", ({corner1, corner2}) => instance.map.flyToBounds([corner1, corner2]));
+    this.handleEvent("setZoom", ({zoom}) => instance.map.setZoom(zoom));
+    this.handleEvent("resetView", () => instance.map.setView([39.5, -98.35], 4));
     this.handleEvent("highlightMarker", ({id}) => {
-      const marker = _markers.get(`markers-${id}`);
-      if (marker) { _map.panTo(marker.getLatLng()); }
+      const marker = instance.markers.get(`${instance.mapElId}-markers-${id}`);
+      if (marker) { instance.map.panTo(marker.getLatLng()); }
     });
     this.handleEvent("highlightPolyline", ({id}) => {
-      const polyline = _polylines.get(`polylines-${id}`);
-      if (polyline) { _map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
+      const polyline = instance.polylines.get(`${instance.mapElId}-polylines-${id}`);
+      if (polyline) { instance.map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
     });
 
     // mousemove — throttled to at most once per second
     let _lastMove = 0;
-    _map.on("mousemove", (e) => {
+    instance.map.on("mousemove", (e) => {
       const now = Date.now();
       if (now - _lastMove < 1000) return;
       _lastMove = now;
-      const center = _map.getCenter();
+      const center = instance.map.getCenter();
       this.pushEvent("map-event", {
         event: "mousemove",
         latLng: [e.latlng.lat, e.latlng.lng],
         center: [center.lat, center.lng],
-        zoom: _map.getZoom(),
+        zoom: instance.map.getZoom(),
       });
     });
   },
@@ -366,23 +380,35 @@ const MARKER_EVENTS = [
 
 window.Hooks.DMarkItem = {
   mounted() {
-    if (!_map) {
-      // Map not ready yet — queue for flush in DynamicMap.mounted()
-      _pending.push({ el: this.el, hookCtx: this });
+    const instance = _findInstance(this.el);
+    if (!instance || !instance.map) {
+      // Map not ready yet — find or create a pending instance and queue
+      const wrapper = this.el.closest("[data-map-instance]");
+      if (wrapper) {
+        const mapId = wrapper.dataset.mapInstance;
+        let inst = _instances.get(mapId);
+        if (!inst) {
+          inst = new MapInstance(mapId);
+          _instances.set(mapId, inst);
+        }
+        inst.pendingMarkers.push({ el: this.el, hookCtx: this });
+      }
       return;
     }
-    _addMarkerFromEl(this.el, this);
+    _addMarkerFromEl(instance, this.el, this);
   },
 
   updated() {
-    const marker = _markers.get(this.el.id);
+    const instance = _findInstance(this.el);
+    if (!instance) return;
+    const marker = instance.markers.get(this.el.id);
     if (!marker) return;
     const lat = parseFloat(this.el.dataset.lat);
     const lng = parseFloat(this.el.dataset.lng);
     const newIcon = this.el.dataset.icon || "default";
     const heading = this.el.dataset.heading;
     const speed = this.el.dataset.speed;
-    const icon = _makeIcon(newIcon, heading);
+    const icon = _makeIcon(instance, newIcon, heading);
 
     // Update the master marker in place
     marker.setLatLng([lat, lng]);
@@ -391,15 +417,14 @@ window.Hooks.DMarkItem = {
     marker.options.dmarkHeading = heading;
     marker.options.dmarkSpeed = speed;
 
-    // Update all tile copies in place — avoids the remove/add cycle that
-    // races with tile recreation triggered by panTo/setView.
+    // Update all tile copies in place
     const stampId = L.stamp(marker);
-    for (const key in _repeatedMarkers._markersByTile) {
-      const copy = _repeatedMarkers._markersByTile[key][stampId];
+    for (const key in instance.repeatedMarkers._markersByTile) {
+      const copy = instance.repeatedMarkers._markersByTile[key][stampId];
       if (copy) {
-        const offset = _repeatedMarkers._offsetsByTile[key];
+        const offset = instance.repeatedMarkers._offsetsByTile[key];
         copy.setLatLng([lat, lng + offset]);
-        copy.setIcon(_makeIcon(newIcon, heading));
+        copy.setIcon(_makeIcon(instance, newIcon, heading));
         if (marker._tooltip) {
           if (copy._tooltip) copy.unbindTooltip();
           copy.bindTooltip(marker._tooltip._content, marker._tooltip.options);
@@ -407,20 +432,22 @@ window.Hooks.DMarkItem = {
       }
     }
     // Auto-pan if this marker is being followed
-    if (this.el.id === _followMarkerId) {
-      _map.setView([lat, lng], _map.getZoom(), {animate: false});
+    if (this.el.id === instance.followMarkerId) {
+      instance.map.setView([lat, lng], instance.map.getZoom(), {animate: false});
     }
 
-    _log("update", `→ ${marker.options.dmarkName} moved`);
+    _log(instance, "update", `→ ${marker.options.dmarkName} moved`);
   },
 
   destroyed() {
-    const marker = _markers.get(this.el.id);
+    const instance = _findInstance(this.el);
+    if (!instance) return;
+    const marker = instance.markers.get(this.el.id);
     if (!marker) return;
     const name = marker.options.dmarkName;
-    _repeatedMarkers.removeMarker(marker);
-    _markers.delete(this.el.id);
-    _log("delete", `✕ ${name} removed`);
+    instance.repeatedMarkers.removeMarker(marker);
+    instance.markers.delete(this.el.id);
+    _log(instance, "delete", `✕ ${name} removed`);
   },
 };
 
@@ -430,29 +457,43 @@ window.Hooks.DMarkItem = {
 
 window.Hooks.DPolylineItem = {
   mounted() {
-    if (!_map) {
-      _pendingPolylines.push({ el: this.el, hookCtx: this });
+    const instance = _findInstance(this.el);
+    if (!instance || !instance.map) {
+      const wrapper = this.el.closest("[data-map-instance]");
+      if (wrapper) {
+        const mapId = wrapper.dataset.mapInstance;
+        let inst = _instances.get(mapId);
+        if (!inst) {
+          inst = new MapInstance(mapId);
+          _instances.set(mapId, inst);
+        }
+        inst.pendingPolylines.push({ el: this.el, hookCtx: this });
+      }
       return;
     }
-    _addPolylineFromEl(this.el, this);
+    _addPolylineFromEl(instance, this.el, this);
   },
 
   updated() {
-    const polyline = _polylines.get(this.el.id);
+    const instance = _findInstance(this.el);
+    if (!instance) return;
+    const polyline = instance.polylines.get(this.el.id);
     if (!polyline) return;
     const path = _unwrapPath(JSON.parse(this.el.dataset.path));
     polyline.setLatLngs(path);
     polyline.setStyle(_parsePolylineOpts(this.el));
-    _log("update", `→ polyline "${this.el.dataset.name}" updated`);
+    _log(instance, "update", `→ polyline "${this.el.dataset.name}" updated`);
   },
 
   destroyed() {
-    const polyline = _polylines.get(this.el.id);
+    const instance = _findInstance(this.el);
+    if (!instance) return;
+    const polyline = instance.polylines.get(this.el.id);
     if (!polyline) return;
     const name = this.el.dataset.name;
     polyline.remove();
-    _polylines.delete(this.el.id);
-    _log("delete", `✕ polyline "${name}" removed`);
+    instance.polylines.delete(this.el.id);
+    _log(instance, "delete", `✕ polyline "${name}" removed`);
   },
 };
 
@@ -460,7 +501,7 @@ window.Hooks.DPolylineItem = {
 // Activity log helper
 // ---------------------------------------------------------------------------
 
-function _log(type, message) {
+function _log(instance, type, message) {
   const log = document.getElementById("dmap-log");
   if (!log) return;
 

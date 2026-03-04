@@ -30,24 +30,32 @@ from pyview_map.views.dynamic_map.map_events import (
 # -- Register marker methods on the global JRPCService instance -----------
 
 @jrpc_service.request("markers.add")
-def markers_add(id: str, name: str, latLng: list[float], icon: str = "default", heading: float | None = None, speed: float | None = None) -> dict:
+def markers_add(
+    id: str, name: str, latLng: list[float],
+    icon: str = "default", heading: float | None = None, speed: float | None = None,
+    map_id: str | None = None,
+) -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_add(id, name, ll, icon=icon, heading=heading, speed=speed)
+    APIMarkerSource.push_add(id, name, ll, icon=icon, heading=heading, speed=speed, map_id=map_id)
     EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.update")
-def markers_update(id: str, name: str, latLng: list[float], icon: str = "default", heading: float | None = None, speed: float | None = None) -> dict:
+def markers_update(
+    id: str, name: str, latLng: list[float],
+    icon: str = "default", heading: float | None = None, speed: float | None = None,
+    map_id: str | None = None,
+) -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_update(id, name, ll, icon=icon, heading=heading, speed=speed)
+    APIMarkerSource.push_update(id, name, ll, icon=icon, heading=heading, speed=speed, map_id=map_id)
     EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.delete")
-def markers_delete(id: str) -> dict:
-    APIMarkerSource.push_delete(id)
+def markers_delete(id: str, map_id: str | None = None) -> dict:
+    APIMarkerSource.push_delete(id, map_id=map_id)
     EventBroadcaster.broadcast(MarkerOpEvent(op="delete", id=id))
     return {"ok": True}
 
@@ -65,68 +73,68 @@ async def map_events_subscribe() -> asyncio.Queue:
 # -- Map command methods ---------------------------------------------------
 
 @jrpc_service.request("map.setView")
-def map_set_view(latLng: list[float], zoom: int) -> dict:
-    CommandQueue.push(SetViewCmd(latLng=LatLng.from_list(latLng), zoom=zoom))
+def map_set_view(latLng: list[float], zoom: int, map_id: str | None = None) -> dict:
+    CommandQueue.push(SetViewCmd(latLng=LatLng.from_list(latLng), zoom=zoom), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.panTo")
-def map_pan_to(latLng: list[float]) -> dict:
-    CommandQueue.push(PanToCmd(latLng=LatLng.from_list(latLng)))
+def map_pan_to(latLng: list[float], map_id: str | None = None) -> dict:
+    CommandQueue.push(PanToCmd(latLng=LatLng.from_list(latLng)), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.flyTo")
-def map_fly_to(latLng: list[float], zoom: int) -> dict:
-    CommandQueue.push(FlyToCmd(latLng=LatLng.from_list(latLng), zoom=zoom))
+def map_fly_to(latLng: list[float], zoom: int, map_id: str | None = None) -> dict:
+    CommandQueue.push(FlyToCmd(latLng=LatLng.from_list(latLng), zoom=zoom), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.fitBounds")
-def map_fit_bounds(corner1: list[float], corner2: list[float]) -> dict:
-    CommandQueue.push(FitBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)))
+def map_fit_bounds(corner1: list[float], corner2: list[float], map_id: str | None = None) -> dict:
+    CommandQueue.push(FitBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.flyToBounds")
-def map_fly_to_bounds(corner1: list[float], corner2: list[float]) -> dict:
-    CommandQueue.push(FlyToBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)))
+def map_fly_to_bounds(corner1: list[float], corner2: list[float], map_id: str | None = None) -> dict:
+    CommandQueue.push(FlyToBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.setZoom")
-def map_set_zoom(zoom: int) -> dict:
-    CommandQueue.push(SetZoomCmd(zoom=zoom))
+def map_set_zoom(zoom: int, map_id: str | None = None) -> dict:
+    CommandQueue.push(SetZoomCmd(zoom=zoom), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.resetView")
-def map_reset_view() -> dict:
-    CommandQueue.push(ResetViewCmd())
+def map_reset_view(map_id: str | None = None) -> dict:
+    CommandQueue.push(ResetViewCmd(), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.highlightMarker")
-def map_highlight_marker(id: str) -> dict:
-    CommandQueue.push(HighlightMarkerCmd(id=id))
+def map_highlight_marker(id: str, map_id: str | None = None) -> dict:
+    CommandQueue.push(HighlightMarkerCmd(id=id), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.highlightPolyline")
-def map_highlight_polyline(id: str) -> dict:
-    CommandQueue.push(HighlightPolylineCmd(id=id))
+def map_highlight_polyline(id: str, map_id: str | None = None) -> dict:
+    CommandQueue.push(HighlightPolylineCmd(id=id), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.followMarker")
-def map_follow_marker(id: str) -> dict:
-    CommandQueue.push(FollowMarkerCmd(id=id))
+def map_follow_marker(id: str, map_id: str | None = None) -> dict:
+    CommandQueue.push(FollowMarkerCmd(id=id), map_id=map_id)
     return {"ok": True}
 
 
 @jrpc_service.request("map.unfollowMarker")
-def map_unfollow_marker() -> dict:
-    CommandQueue.push(UnfollowMarkerCmd())
+def map_unfollow_marker(map_id: str | None = None) -> dict:
+    CommandQueue.push(UnfollowMarkerCmd(), map_id=map_id)
     return {"ok": True}
 
 
@@ -137,9 +145,10 @@ def polylines_add(
     id: str, name: str, path: list[list[float]],
     color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
     dashArray: str | None = None,
+    map_id: str | None = None,
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    APIPolylineSource.push_add(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    APIPolylineSource.push_add(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray, map_id=map_id)
     EventBroadcaster.broadcast(PolylineOpEvent(op="add", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray))
     return {"ok": True}
 
@@ -149,16 +158,17 @@ def polylines_update(
     id: str, name: str, path: list[list[float]],
     color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
     dashArray: str | None = None,
+    map_id: str | None = None,
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    APIPolylineSource.push_update(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    APIPolylineSource.push_update(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray, map_id=map_id)
     EventBroadcaster.broadcast(PolylineOpEvent(op="update", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray))
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.delete")
-def polylines_delete(id: str) -> dict:
-    APIPolylineSource.push_delete(id)
+def polylines_delete(id: str, map_id: str | None = None) -> dict:
+    APIPolylineSource.push_delete(id, map_id=map_id)
     EventBroadcaster.broadcast(PolylineOpEvent(op="delete", id=id))
     return {"ok": True}
 

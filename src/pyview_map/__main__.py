@@ -4,7 +4,7 @@
 import uvicorn
 
 from pyview_map.views.maps.map import MapLiveView
-from pyview_map.views.dynamic_map import DynamicMapLiveView
+from pyview_map.views.dynamic_map import DynamicMapLiveView, MultiMapLiveView
 from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
 from pyview_map.views.dynamic_map.marker_api import api_app
 from pyview_map.app import app
@@ -27,10 +27,12 @@ from pyview_map.app import app
 def main():
     print("Starting PyView Map server on http://localhost:8123/map")
     print("Dynamic Map available at    http://localhost:8123/dmap")
+    print("Multi-Map available at      http://localhost:8123/mmap")
     print("Marker API available at     http://localhost:8123/api/mcp")
 
     app.add_live_view("/map", MapLiveView)
     app.add_live_view("/dmap", DynamicMapLiveView.with_source(APIMarkerSource))
+    app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
     app.mount("/api", api_app)
 
     uvicorn.run("pyview_map.__main__:app", host="0.0.0.0", port=8123, reload=False)

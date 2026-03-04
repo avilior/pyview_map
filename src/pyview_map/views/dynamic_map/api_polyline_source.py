@@ -5,20 +5,28 @@ from pyview_map.views.dynamic_map.latlng import LatLng
 
 
 class APIPolylineSource:
-    """Polyline fan-out source — structural clone of APIMarkerSource.
+    """Polyline fan-out source with map_id routing — structural clone of APIMarkerSource.
 
     Each LiveView connection creates its own instance with a dedicated
-    bounded queue. Push methods fan out operations to all subscriber queues.
+    bounded queue. Push methods fan out operations to matching subscriber queues.
+
+    Subscribers are keyed by map_id:
+      - subscribe with map_id="fleet" → receives ops targeted at "fleet" AND broadcasts
+      - subscribe with map_id=None → receives ALL ops regardless of target map_id
+
     The shared _polylines dict stays class-level so all instances see the
     same current state on mount.
     """
 
-    _subscribers: set[asyncio.Queue] = set()
+    # map_id → set of subscriber queues.  None key = "receive all" (broadcast subscribers).
+    _subscribers: dict[str | None, set[asyncio.Queue]] = {}
     _polylines: dict[str, DPolyline] = {}
 
-    def __init__(self):
+    def __init__(self, *, map_id: str | None = None):
+        self._map_id = map_id
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        type(self)._subscribers.add(self._queue)
+        subs = type(self)._subscribers.setdefault(map_id, set())
+        subs.add(self._queue)
 
     @property
     def polylines(self) -> list[DPolyline]:
@@ -31,15 +39,33 @@ class APIPolylineSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict) -> None:
-        dead: list[asyncio.Queue] = []
-        for q in cls._subscribers:
-            try:
-                q.put_nowait(op)
-            except asyncio.QueueFull:
-                dead.append(q)
-        for q in dead:
-            cls._subscribers.discard(q)
+    def _broadcast(cls, op: dict, *, map_id: str | None = None) -> None:
+        """Fan out an op to targeted subscribers and broadcast (None-key) subscribers."""
+        targets: list[set[asyncio.Queue]] = []
+
+        if None in cls._subscribers:
+            targets.append(cls._subscribers[None])
+
+        if map_id is not None and map_id in cls._subscribers:
+            targets.append(cls._subscribers[map_id])
+
+        dead: list[tuple[str | None, asyncio.Queue]] = []
+        seen: set[int] = set()
+
+        for target_set in targets:
+            for q in target_set:
+                qid = id(q)
+                if qid in seen:
+                    continue
+                seen.add(qid)
+                try:
+                    q.put_nowait(op)
+                except asyncio.QueueFull:
+                    dead.append((map_id, q))
+
+        for key, q in dead:
+            for s in cls._subscribers.values():
+                s.discard(q)
 
     @classmethod
     def push_add(
@@ -51,6 +77,8 @@ class APIPolylineSource:
         weight: int = 3,
         opacity: float = 1.0,
         dash_array: str | None = None,
+        *,
+        map_id: str | None = None,
     ) -> None:
         cls._polylines[id] = DPolyline(
             id=id, name=name, path=path,
@@ -63,7 +91,7 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op)
+        cls._broadcast(op, map_id=map_id)
 
     @classmethod
     def push_update(
@@ -75,6 +103,8 @@ class APIPolylineSource:
         weight: int = 3,
         opacity: float = 1.0,
         dash_array: str | None = None,
+        *,
+        map_id: str | None = None,
     ) -> None:
         if id in cls._polylines:
             p = cls._polylines[id]
@@ -91,9 +121,9 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op)
+        cls._broadcast(op, map_id=map_id)
 
     @classmethod
-    def push_delete(cls, id: str) -> None:
+    def push_delete(cls, id: str, *, map_id: str | None = None) -> None:
         cls._polylines.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id})
+        cls._broadcast({"op": "delete", "id": id}, map_id=map_id)

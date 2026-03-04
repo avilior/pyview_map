@@ -5,22 +5,28 @@ from pyview_map.views.dynamic_map.latlng import LatLng
 
 
 class APIMarkerSource:
-    """MarkerSource implementation with per-instance subscriber queues.
+    """MarkerSource implementation with per-instance subscriber queues and map_id routing.
 
     Each LiveView connection creates its own instance, which gets a dedicated
-    bounded queue. Push methods fan out operations to all subscriber queues,
-    so every connected browser sees every update.
+    bounded queue. Push methods fan out operations to matching subscriber queues.
+
+    Subscribers are keyed by map_id:
+      - subscribe(map_id="fleet") → receives ops targeted at "fleet" AND broadcasts (map_id=None)
+      - subscribe(map_id=None) → receives ALL ops regardless of target map_id
 
     The shared _markers dict stays class-level so all instances see the same
     current state on mount.
     """
 
-    _subscribers: set[asyncio.Queue] = set()
+    # map_id → set of subscriber queues.  None key = "receive all" (broadcast subscribers).
+    _subscribers: dict[str | None, set[asyncio.Queue]] = {}
     _markers: dict[str, DMarker] = {}
 
-    def __init__(self):
+    def __init__(self, *, map_id: str | None = None):
+        self._map_id = map_id
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        type(self)._subscribers.add(self._queue)
+        subs = type(self)._subscribers.setdefault(map_id, set())
+        subs.add(self._queue)
 
     @property
     def markers(self) -> list[DMarker]:
@@ -33,28 +39,56 @@ class APIMarkerSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict) -> None:
-        dead: list[asyncio.Queue] = []
-        for q in cls._subscribers:
-            try:
-                q.put_nowait(op)
-            except asyncio.QueueFull:
-                dead.append(q)
-        for q in dead:
-            cls._subscribers.discard(q)
+    def _broadcast(cls, op: dict, *, map_id: str | None = None) -> None:
+        """Fan out an op to targeted subscribers and broadcast (None-key) subscribers."""
+        targets: list[set[asyncio.Queue]] = []
+
+        # Always include broadcast subscribers (map_id=None key)
+        if None in cls._subscribers:
+            targets.append(cls._subscribers[None])
+
+        # If a specific map_id was given, also include its subscribers
+        if map_id is not None and map_id in cls._subscribers:
+            targets.append(cls._subscribers[map_id])
+
+        dead: list[tuple[str | None, asyncio.Queue]] = []
+        seen: set[int] = set()  # avoid sending to the same queue twice
+
+        for target_set in targets:
+            for q in target_set:
+                qid = id(q)
+                if qid in seen:
+                    continue
+                seen.add(qid)
+                try:
+                    q.put_nowait(op)
+                except asyncio.QueueFull:
+                    dead.append((map_id, q))
+
+        for key, q in dead:
+            for s in cls._subscribers.values():
+                s.discard(q)
 
     @classmethod
-    def push_add(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None, speed: float | None = None) -> None:
+    def push_add(
+        cls, id: str, name: str, lat_lng: LatLng,
+        icon: str = "default", heading: float | None = None, speed: float | None = None,
+        *, map_id: str | None = None,
+    ) -> None:
         cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon, heading=heading, speed=speed)
         op: dict = {"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon}
         if heading is not None:
             op["heading"] = heading
         if speed is not None:
             op["speed"] = speed
-        cls._broadcast(op)
+        cls._broadcast(op, map_id=map_id)
 
     @classmethod
-    def push_update(cls, id: str, name: str, lat_lng: LatLng, icon: str = "default", heading: float | None = None, speed: float | None = None) -> None:
+    def push_update(
+        cls, id: str, name: str, lat_lng: LatLng,
+        icon: str = "default", heading: float | None = None, speed: float | None = None,
+        *, map_id: str | None = None,
+    ) -> None:
         if id in cls._markers:
             cls._markers[id].lat_lng = lat_lng
             cls._markers[id].icon = icon
@@ -65,9 +99,9 @@ class APIMarkerSource:
             op["heading"] = heading
         if speed is not None:
             op["speed"] = speed
-        cls._broadcast(op)
+        cls._broadcast(op, map_id=map_id)
 
     @classmethod
-    def push_delete(cls, id: str) -> None:
+    def push_delete(cls, id: str, *, map_id: str | None = None) -> None:
         cls._markers.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id})
+        cls._broadcast({"op": "delete", "id": id}, map_id=map_id)
