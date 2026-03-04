@@ -11,7 +11,7 @@ import random
 import uuid
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
-from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCError, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
+from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
 from pyview_map.views.dynamic_map.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
@@ -75,7 +75,7 @@ async def listen_events(rpc: ClientRPC) -> None:
     async for msg in rpc.send_request(req):
 
         match msg:
-            case JSONRPCNotification():
+            case JSONRPCNotification() if isinstance(msg.params, dict):
                 print(f"[RX {msg.method}]:")
                 evt = parse_event(msg.params)
                 match evt:
@@ -179,19 +179,13 @@ async def main() -> None:
                 new_latlng = _advance(m)
                 req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng, "icon": m["icon"], "heading": m["heading"], "speed": m["speed"]})
                 async for resp in rpc.send_request(req):
-                    if resp.id != req.id:
-                        print(f"  ERROR: unexpected response id {resp.id} != {req.id}")
+                    if isinstance(resp, JSONRPCErrorResponse):
+                        print(f"  ERROR: {resp}")
                         break
-                    if isinstance(resp, JSONRPCError):
-                        print(f"  ERROR: {resp.error}")
-                        break
-
-                    # Cast to JSONRPCResponse to access result attribute
                     if isinstance(resp, JSONRPCResponse):
                         result = resp.result
                         if result and not result.get('ok', True):
                             print(f"  ERROR: unexpected result {result}")
-
                     print(f"  moved {m['name']} → ({new_latlng[0]}, {new_latlng[1]})")
 
         finally:

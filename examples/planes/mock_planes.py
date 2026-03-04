@@ -7,7 +7,7 @@ Run this while the server is up to see a plane fly from Ottawa to Sydney:
 
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Tuple
+from typing import Tuple, Self
 
 from dataclasses import dataclass
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
@@ -34,7 +34,7 @@ AUTH_TOKEN = "tok-acme-001"
 async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None:
     """Fire a JSON-RPC request and consume the response."""
     req = JSONRPCRequest(method=method, params=params or {})
-    async for resp in rpc.send_request(req):
+    async for _ in rpc.send_request(req):
         pass
 
 
@@ -46,7 +46,7 @@ async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None
 class Airport:
     name: str
     latlng: LatLng
-    marker: DMarker = None
+    marker: DMarker | None = None
 
 
 airports = [
@@ -89,52 +89,101 @@ def init_airport_markers():
 @dataclass
 class Plane:
     id: str
-    marker: DMarker = None
+    marker: DMarker | None = None
 
 
-@dataclass
 class Flight:
-    id: str
-    plane: Plane
-    origin: Airport
-    destination: Airport
-    departure_time: datetime | None = None
-    arrival_time: datetime | None = None
-    planned_route: list[Tuple[datetime, float, float]] = None
-    last_position: LatLng | None = None
+
+    def __init__(self, id: str, plane: Plane, origin: Airport, destination: Airport,
+                 departure_time: datetime | None = None,
+                 arrival_time: datetime | None = None,
+                 planned_route: list[Tuple[datetime, LatLng]] | None = None,
+                 last_position: LatLng | None = None) -> None:
+
+        self.id = id
+        self.plane = plane
+        self.origin: Airport = origin
+        self.destination: Airport = destination
+
+        self.departure_time: datetime | None = departure_time
+        self.arrival_time: datetime | None = arrival_time
+        self.planned_route: list[Tuple[datetime, LatLng]] | None = planned_route
+        self.last_position: LatLng | None = last_position
+        self.flight_completed: bool = False
 
 
-def build_flight(from_airport_name: str, to_airport_name: str, flight_id: str, plane_id: str) -> Flight:
-    from_airport = AIRPORT_REGISTRY[from_airport_name]
-    to_airport = AIRPORT_REGISTRY[to_airport_name]
+    @classmethod
+    def build_flight(cls, origin_airport_name: str, destination_airport_name: str, flight_id: str, plane_id: str, ground_speed_knots: int) -> Self:
 
-    planned_route = list(great_circle_flight_generator(
-        from_latlng=from_airport.latlng,
-        to_latlng=to_airport.latlng,
-        ground_speed_knots=500,
-        start_time=datetime.now(timezone.utc),
-        step=timedelta(minutes=1),
-    ))
+        origin_airport = AIRPORT_REGISTRY[origin_airport_name]
+        destination_airport = AIRPORT_REGISTRY[destination_airport_name]
 
-    heading = bearing_deg(from_latlng=from_airport.latlng, to_latlng=to_airport.latlng)
+        planned_route = list(great_circle_flight_generator(
+            from_latlng=origin_airport.latlng,
+            to_latlng=destination_airport.latlng,
+            ground_speed_knots=ground_speed_knots,
+            start_time=datetime.now(timezone.utc),
+            step=timedelta(minutes=1),
+        ))
 
-    return Flight(
-        id=flight_id,
-        plane=Plane(
-            id=plane_id,
-            marker=DMarker(
-                id=plane_id, name=plane_id,
-                lat_lng=from_airport.latlng, icon="airplane",
-                speed=500, heading=heading,
-            ),
-        ),
-        origin=from_airport,
-        destination=to_airport,
-        departure_time=datetime.now(timezone.utc),
-        arrival_time=planned_route[-1][0],
-        planned_route=planned_route,
-        last_position=from_airport.latlng,
-    )
+        heading = bearing_deg(from_latlng=origin_airport.latlng, to_latlng=destination_airport.latlng)
+
+        plane_marker  = DMarker( id=plane_id, name=plane_id,
+                                 lat_lng=origin_airport.latlng, icon="airplane",
+                                 speed=ground_speed_knots, heading=heading)
+
+        plane = Plane( id=plane_id, marker=plane_marker)
+
+        return cls(
+            id = flight_id,
+            plane = plane,
+            origin = origin_airport,
+            destination = destination_airport,
+            departure_time = datetime.now(timezone.utc),
+            arrival_time = planned_route[-1][0],
+            planned_route = planned_route,
+            last_position = origin_airport.latlng,
+        )
+
+    async def start(self, rpc):
+
+        await _send(rpc, "markers.add", self.plane.marker.to_dict())
+
+        planned_route_dpolyline = DPolyline(
+            id="flight1_route",
+            name="Flight 1 Route",
+            path=[latlng for _, latlng in self.planned_route],
+            color="#3388ff",
+            weight=3,
+            opacity=1.0,
+        )
+        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict())
+        # await _send(rpc, "map.followMarker", {"id": "plane1"})
+        print("Added plane — following plane1")
+
+        while True:
+
+            await asyncio.sleep(1)
+
+            current_latlng = great_circle_position_at_time(
+                from_latlng=self.origin.latlng,
+                to_latlng=self.destination.latlng,
+                ground_speed_knots=self.plane.marker.speed,
+                start_time=self.departure_time,
+                current_time=datetime.now(timezone.utc),
+            )
+
+            heading = bearing_deg(from_latlng=self.last_position, to_latlng=current_latlng)
+            self.plane.marker.heading = heading
+            self.plane.marker.lat_lng = current_latlng
+            self.last_position = current_latlng
+
+            await _send(rpc, "markers.update", self.plane.marker.to_dict())
+
+            # if the plane arrived at destination break
+            if current_latlng == self.destination.latlng:
+                print(F"The flight arrived at destination: {datetime.now(timezone.utc)}")
+                break
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +195,7 @@ async def listen_events(rpc: ClientRPC) -> None:
     req = JSONRPCRequest(method="map.events.subscribe")
     async for msg in rpc.send_request(req):
         match msg:
-            case JSONRPCNotification():
+            case JSONRPCNotification() if isinstance(msg.params, dict):
                 evt = parse_event(msg.params)
                 match evt:
                     case MarkerOpEvent():
@@ -176,8 +225,11 @@ async def listen_events(rpc: ClientRPC) -> None:
 async def main() -> None:
     init_airport_markers()
 
+    all_tasks: list[asyncio.Task] = []
+
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
-        event_task = asyncio.create_task(listen_events(rpc))
+
+        all_tasks.append(asyncio.create_task(listen_events(rpc)))
 
         # Add airport markers (batched)
         batch_req = [JSONRPCRequest(method="markers.add", params=ap.marker.to_dict()) for ap in airports]
@@ -186,41 +238,25 @@ async def main() -> None:
         print("Rendered airports")
 
         # Create and display flight
-        flight = build_flight("YOW", "SYD", flight_id="flight1", plane_id="plane1")
-        await _send(rpc, "markers.add", flight.plane.marker.to_dict())
 
-        planned_route_dpolyline = DPolyline(
-            id="flight1_route",
-            name="Flight 1 Route",
-            path=[latlng for _, latlng in flight.planned_route],
-            color="#3388ff",
-            weight=3,
-            opacity=1.0,
-        )
-        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict())
-        await _send(rpc, "map.followMarker", {"id": "plane1"})
-        print("Added plane — following plane1")
-
+        flight_tasks: list[Flight] = []
         try:
+
+            flight = Flight.build_flight("YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500)
+
+            all_tasks.append(asyncio.create_task(flight.start(rpc)))
+
             while True:
                 await asyncio.sleep(1)
 
-                current_latlng = great_circle_position_at_time(
-                    from_latlng=flight.origin.latlng,
-                    to_latlng=flight.destination.latlng,
-                    ground_speed_knots=flight.plane.marker.speed,
-                    start_time=flight.departure_time,
-                    current_time=datetime.now(timezone.utc),
-                )
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("Keyboard interrupt")
 
-                heading = bearing_deg(from_latlng=flight.last_position, to_latlng=current_latlng)
-                flight.plane.marker.heading = heading
-                flight.plane.marker.lat_lng = current_latlng
-                flight.last_position = current_latlng
-
-                await _send(rpc, "markers.update", flight.plane.marker.to_dict())
         finally:
-            event_task.cancel()
+
+            # cancel all tasks and wait for them to finish
+            [task.cancel() for task in all_tasks]
+            await asyncio.gather(*all_tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":

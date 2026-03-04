@@ -29,13 +29,13 @@ class MapLiveView(LiveView[MapContext]):
 
     async def mount(self, socket: LiveViewSocket[MapContext], session):
 
-        socket.context = MapContext(parks=national_parks, selected_park_name=national_parks[0]["name"])
+        socket.context = MapContext(parks=national_parks, selected_park_name=str(national_parks[0]["name"]))
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[MapContext]):
 
         print(event, payload)
 
         park = [p for p in national_parks if p["name"] == payload["name"]][0]
-        socket.context.selected_park_name = park["name"]
+        socket.context.selected_park_name = str(park["name"])
 
         await socket.push_event("highlight-park", park)

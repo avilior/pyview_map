@@ -24,6 +24,7 @@ def _random_latlng() -> LatLng:
 
 def _advance(marker: DMarker) -> LatLng:
     """Move marker along its heading with slight drift; bounce off US bounds."""
+    assert marker.heading is not None and marker.speed is not None
     angle = math.radians(marker.heading)
     dlat = marker.speed * math.cos(angle) * random.uniform(0.6, 1.4)
     dlng = marker.speed * math.sin(angle) * random.uniform(0.6, 1.4)
