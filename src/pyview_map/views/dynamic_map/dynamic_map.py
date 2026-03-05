@@ -59,7 +59,7 @@ class DynamicMapComponentContext:
     markers: Stream[DMarker]
     polylines: Stream[DPolyline]
     icon_registry_json: str
-    map_id: str
+    component_id: str
     _last_version: int = 0
 
 
@@ -123,14 +123,14 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
     """
 
     async def mount(self, socket: ComponentSocket[DynamicMapComponentContext], assigns: dict[str, Any]) -> None:
-        map_id = assigns.get("map_id", "dmap")
+        component_id = assigns.get("component_id", "dmap")
         initial_markers = assigns.get("initial_markers", [])
         initial_polylines = assigns.get("initial_polylines", [])
         socket.context = DynamicMapComponentContext(
-            markers=Stream(initial_markers, name=f"{map_id}-markers"),
-            polylines=Stream(initial_polylines, name=f"{map_id}-polylines"),
+            markers=Stream(initial_markers, name=f"{component_id}-markers"),
+            polylines=Stream(initial_polylines, name=f"{component_id}-polylines"),
             icon_registry_json=assigns.get("icon_registry_json", "{}"),
-            map_id=map_id,
+            component_id=component_id,
         )
 
     async def update(self, socket: ComponentSocket[DynamicMapComponentContext], assigns: dict[str, Any]) -> None:
@@ -140,16 +140,16 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
             return
         ctx._last_version = version
 
-        marker_stream_name = f"{ctx.map_id}-markers"
-        polyline_stream_name = f"{ctx.map_id}-polylines"
+        marker_stream_name = f"{ctx.component_id}-markers"
+        polyline_stream_name = f"{ctx.component_id}-polylines"
         _apply_marker_ops(ctx.markers, assigns.get("marker_ops", []), stream_name=marker_stream_name)
         _apply_polyline_ops(ctx.polylines, assigns.get("polyline_ops", []), stream_name=polyline_stream_name)
 
     def template(self, assigns: DynamicMapComponentContext, meta: ComponentMeta):
-        map_id = assigns.map_id
+        component_id = assigns.component_id
         icon_json = assigns.icon_registry_json
-        markers_id = f"{map_id}-markers"
-        polylines_id = f"{map_id}-polylines"
+        markers_id = f"{component_id}-markers"
+        polylines_id = f"{component_id}-polylines"
 
         markers_html = stream_for(assigns.markers, lambda dom_id, marker:
             t'<div id="{dom_id}" phx-hook="DMarkItem" data-name="{marker.name}" data-lat="{marker.lat}" data-lng="{marker.lng}" data-icon="{marker.icon}" data-heading="{marker.heading}" data-speed="{marker.speed}"></div>'
@@ -159,9 +159,9 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
             t'<div id="{dom_id}" phx-hook="DPolylineItem" data-name="{polyline.name}" data-path="{json.dumps(polyline.path_as_lists)}" data-color="{polyline.color}" data-weight="{polyline.weight}" data-opacity="{polyline.opacity}" data-dash-array="{polyline.dash_array}"></div>'
         )
 
-        return t"""<div data-map-instance="{map_id}">
-    <div phx-update="ignore" id="{map_id}_wrapper">
-        <div id="{map_id}"
+        return t"""<div data-component-id="{component_id}">
+    <div phx-update="ignore" id="{component_id}_wrapper">
+        <div id="{component_id}"
              phx-hook="DynamicMap"
              data-icon-registry="{icon_json}"
              class="w-full h-96 lg:h-[580px] rounded-md overflow-hidden border border-gray-300">
@@ -271,7 +271,7 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
                 cmd = self._cmd_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            event_name, payload = cmd.to_push_event()
+            event_name, payload = cmd.to_push_event(target="dmap")
             await socket.push_event(event_name, payload)
 
         # Store ops for the component; bump version so component applies them once
@@ -318,11 +318,13 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
         elif event == "map-event":
             raw_center = payload.get("center", [])
             raw_ll = payload.get("latLng")
+            raw_bounds = payload.get("bounds")
             me = MapEvent(
                 event=payload.get("event", "?"),
                 center=LatLng.from_list(raw_center) if raw_center else LatLng(0, 0),
                 zoom=payload.get("zoom", 0),
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
+                bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
             )
             detail = me.event
             if me.center:
@@ -344,20 +346,20 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
             marker_ops=assigns.marker_ops,
             polyline_ops=assigns.polyline_ops,
             ops_version=assigns.ops_version,
-            map_id="dmap",
+            component_id="dmap",
         )
 
         # Server events — conditionally rendered
-        marker_ev = t'<div class="text-blue-600 truncate" title="{last_me}">\u25cf {last_me}</div>' if last_me else t''
-        map_ev = t'<div class="text-purple-600 truncate" title="{last_mae}">\u25c6 {last_mae}</div>' if last_mae else t''
-        polyline_ev = t'<div class="text-green-600 truncate" title="{last_pe}">\u25ac {last_pe}</div>' if last_pe else t''
+        marker_ev = t'<div class="text-blue-600 truncate" title="{last_me}">● {last_me}</div>' if last_me else t''
+        map_ev = t'<div class="text-purple-600 truncate" title="{last_mae}">◆ {last_mae}</div>' if last_mae else t''
+        polyline_ev = t'<div class="text-green-600 truncate" title="{last_pe}">▬ {last_pe}</div>' if last_pe else t''
         no_events = t'<div class="text-gray-400">No events yet</div>' if not (last_me or last_mae or last_pe) else t''
 
         return t"""<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
         <h1 class="text-3xl font-bold text-gray-900 mb-1">\U0001f4e1 Dynamic Marker Map</h1>
         <p class="text-sm text-gray-500 mb-6">
-            Markers are streamed in real-time \u2014 they appear, disappear, and move across the map.
+            Markers are streamed in real-time — they appear, disappear, and move across the map.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div class="lg:col-span-1 flex flex-col gap-4">
@@ -398,7 +400,7 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
 @dataclass
 class _MapSlot:
     """Per-map internal state (not part of the context — stored on the instance)."""
-    map_id: str
+    component_id: str
     source: MarkerSource
     polyline_source: APIPolylineSource
     cmd_queue: asyncio.Queue
@@ -410,36 +412,36 @@ class MultiMapPageContext:
     last_marker_event: str = ""
     last_map_event: str = ""
     last_polyline_event: str = ""
-    # Per-map initial data — keyed by map_id
-    initial_data: dict = field(default_factory=dict)   # map_id → {markers, polylines}
-    # Per-map ops — keyed by map_id
-    map_ops: dict = field(default_factory=dict)         # map_id → {marker_ops, polyline_ops, ops_version}
+    # Per-map initial data — keyed by component_id
+    initial_data: dict = field(default_factory=dict)   # component_id → {markers, polylines}
+    # Per-map ops — keyed by component_id
+    map_ops: dict = field(default_factory=dict)         # component_id → {marker_ops, polyline_ops, ops_version}
 
 
 class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
     """
     Multi-map page with two side-by-side DynamicMapComponent instances.
 
-    Each map has its own map_id. External clients use the map_id parameter
+    Each map has its own component_id. External clients use the component_id parameter
     to route markers/polylines/commands to a specific map.
 
     Usage:
         app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
     """
 
-    map_ids: list[str] = []
+    component_ids: list[str] = []
     source_class: type = None  # type: ignore[assignment]
     tick_interval: float = 1.2
 
     @classmethod
-    def with_maps(cls, map_ids: list[str], *, source_class: type | None = None, tick_interval: float = 1.2):
+    def with_maps(cls, component_ids: list[str], *, source_class: type | None = None, tick_interval: float = 1.2):
         """Return a configured MultiMapLiveView class."""
         from .api_marker_source import APIMarkerSource as _DefaultSource
         return type(
             "MultiMapLiveView",
             (cls,),
             {
-                "map_ids": map_ids,
+                "component_ids": component_ids,
                 "source_class": source_class or _DefaultSource,
                 "tick_interval": tick_interval,
             },
@@ -450,20 +452,20 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
         initial_data: dict = {}
         map_ops: dict = {}
 
-        for map_id in self.map_ids:
-            source = self.source_class(map_id=map_id)
-            polyline_source = APIPolylineSource(map_id=map_id)
-            self._slots[map_id] = _MapSlot(
-                map_id=map_id,
+        for component_id in self.component_ids:
+            source = self.source_class(component_id=component_id)
+            polyline_source = APIPolylineSource(component_id=component_id)
+            self._slots[component_id] = _MapSlot(
+                component_id=component_id,
                 source=source,
                 polyline_source=polyline_source,
                 cmd_queue=asyncio.Queue(maxsize=1),  # placeholder
             )
-            initial_data[map_id] = {
+            initial_data[component_id] = {
                 "markers": source.markers,
                 "polylines": polyline_source.polylines,
             }
-            map_ops[map_id] = {"marker_ops": [], "polyline_ops": [], "ops_version": 0}
+            map_ops[component_id] = {"marker_ops": [], "polyline_ops": [], "ops_version": 0}
 
         socket.context = MultiMapPageContext(
             icon_registry_json=icon_registry.to_json(),
@@ -472,15 +474,15 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
         )
 
         if socket.connected:
-            for map_id, slot in self._slots.items():
-                slot.cmd_queue = CommandQueue.subscribe(map_id=map_id)
+            for component_id, slot in self._slots.items():
+                slot.cmd_queue = CommandQueue.subscribe(component_id=component_id)
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[MultiMapPageContext]):
         if event.name != "tick":
             return
 
-        for map_id, slot in self._slots.items():
+        for component_id, slot in self._slots.items():
             # Drain marker updates
             marker_ops: list[dict] = []
             while True:
@@ -503,11 +505,11 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
                     cmd = slot.cmd_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
-                event_name, payload = cmd.to_push_event()
+                event_name, payload = cmd.to_push_event(target=component_id)
                 await socket.push_event(event_name, payload)
 
             # Update context
-            ops = socket.context.map_ops[map_id]
+            ops = socket.context.map_ops[component_id]
             ops["marker_ops"] = marker_ops
             ops["polyline_ops"] = polyline_ops
             if marker_ops or polyline_ops:
@@ -528,7 +530,7 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
                 name=payload.get("name", payload.get("id", "?")),
                 latLng=ll,
             )
-            detail = f"{me.event} \u2192 {me.name}"
+            detail = f"{me.event} → {me.name}"
             if me.latLng:
                 detail += f" @ ({me.latLng.lat:.2f}, {me.latLng.lng:.2f})"
             socket.context.last_marker_event = detail
@@ -543,7 +545,7 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
                 name=payload.get("name", payload.get("id", "?")),
                 latLng=ll,
             )
-            detail = f"{pe.event} \u2192 {pe.name}"
+            detail = f"{pe.event} → {pe.name}"
             if pe.latLng:
                 detail += f" @ ({pe.latLng.lat:.2f}, {pe.latLng.lng:.2f})"
             socket.context.last_polyline_event = detail
@@ -552,11 +554,13 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
         elif event == "map-event":
             raw_center = payload.get("center", [])
             raw_ll = payload.get("latLng")
+            raw_bounds = payload.get("bounds")
             me = MapEvent(
                 event=payload.get("event", "?"),
                 center=LatLng.from_list(raw_center) if raw_center else LatLng(0, 0),
                 zoom=payload.get("zoom", 0),
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
+                bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
             )
             detail = me.event
             if me.center:
@@ -573,35 +577,35 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
 
         # Build a component for each map
         map_components = []
-        for map_id in self.map_ids:
-            init = assigns.initial_data.get(map_id, {})
-            ops = assigns.map_ops.get(map_id, {})
-            comp = live_component(DynamicMapComponent, id=map_id,
+        for component_id in self.component_ids:
+            init = assigns.initial_data.get(component_id, {})
+            ops = assigns.map_ops.get(component_id, {})
+            comp = live_component(DynamicMapComponent, id=component_id,
                 initial_markers=init.get("markers", []),
                 initial_polylines=init.get("polylines", []),
                 icon_registry_json=assigns.icon_registry_json,
                 marker_ops=ops.get("marker_ops", []),
                 polyline_ops=ops.get("polyline_ops", []),
                 ops_version=ops.get("ops_version", 0),
-                map_id=map_id,
+                component_id=component_id,
             )
-            map_components.append((map_id, comp))
+            map_components.append((component_id, comp))
 
         # For 2 maps: side-by-side layout
         left_id, left_comp = map_components[0] if len(map_components) > 0 else ("", t"")
         right_id, right_comp = map_components[1] if len(map_components) > 1 else ("", t"")
 
         # Server events
-        marker_ev = t'<div class="text-blue-600 truncate" title="{last_me}">\u25cf {last_me}</div>' if last_me else t''
-        map_ev = t'<div class="text-purple-600 truncate" title="{last_mae}">\u25c6 {last_mae}</div>' if last_mae else t''
-        polyline_ev = t'<div class="text-green-600 truncate" title="{last_pe}">\u25ac {last_pe}</div>' if last_pe else t''
+        marker_ev = t'<div class="text-blue-600 truncate" title="{last_me}">● {last_me}</div>' if last_me else t''
+        map_ev = t'<div class="text-purple-600 truncate" title="{last_mae}">◆ {last_mae}</div>' if last_mae else t''
+        polyline_ev = t'<div class="text-green-600 truncate" title="{last_pe}">▬ {last_pe}</div>' if last_pe else t''
         no_events = t'<div class="text-gray-400">No events yet</div>' if not (last_me or last_mae or last_pe) else t''
 
         return t"""<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
         <h1 class="text-3xl font-bold text-gray-900 mb-1">\U0001f4e1 Multi-Map Dashboard</h1>
         <p class="text-sm text-gray-500 mb-6">
-            Two independent maps \u2014 use <code>map_id</code> to route markers to a specific map.
+            Two independent maps — use <code>component_id</code> to route markers to a specific map.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
             <div>

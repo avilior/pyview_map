@@ -59,15 +59,19 @@ class MapEvent:
     center: LatLng
     zoom: int
     latLng: LatLng | None = None
+    bounds: tuple[LatLng, LatLng] | None = None  # (sw, ne)
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "type": "map-event",
             "event": self.event,
             "center": self.center.to_list(),
             "zoom": self.zoom,
             "latLng": self.latLng.to_list() if self.latLng else None,
         }
+        if self.bounds is not None:
+            d["bounds"] = [self.bounds[0].to_list(), self.bounds[1].to_list()]
+        return d
 
 
 @dataclass(slots=True)
@@ -144,11 +148,13 @@ def parse_event(params: dict) -> BroadcastEvent:
             )
         case "map-event":
             raw_ll = params.get("latLng")
+            raw_bounds = params.get("bounds")
             return MapEvent(
                 event=params["event"],
                 center=LatLng.from_list(params["center"]),
                 zoom=params["zoom"],
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
+                bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
             )
         case "polyline-op":
             raw_path = params.get("path")
@@ -167,6 +173,22 @@ def parse_event(params: dict) -> BroadcastEvent:
                 name=params["name"],
                 latLng=LatLng.from_list(params["latLng"]),
             )
+        case "list-item-op":
+            from pyview_map.views.dynamic_list.list_events import ListItemOpEvent
+            return ListItemOpEvent(
+                op=params["op"],
+                id=params.get("id", ""),
+                label=params.get("label", ""),
+                subtitle=params.get("subtitle", ""),
+                at=params.get("at", -1),
+            )
+        case "list-item-event":
+            from pyview_map.views.dynamic_list.list_events import ListItemClickEvent
+            return ListItemClickEvent(
+                event=params["event"],
+                id=params["id"],
+                label=params["label"],
+            )
         case _:
             raise ValueError(f"Unknown event type: {etype}")
 
@@ -180,16 +202,18 @@ class SetViewCmd:
     latLng: LatLng
     zoom: int
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "setView", {"latLng": self.latLng.to_list(), "zoom": self.zoom}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}setView", {"latLng": self.latLng.to_list(), "zoom": self.zoom}
 
 
 @dataclass(slots=True)
 class PanToCmd:
     latLng: LatLng
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "panTo", {"latLng": self.latLng.to_list()}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}panTo", {"latLng": self.latLng.to_list()}
 
 
 @dataclass(slots=True)
@@ -197,8 +221,9 @@ class FlyToCmd:
     latLng: LatLng
     zoom: int
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "flyTo", {"latLng": self.latLng.to_list(), "zoom": self.zoom}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}flyTo", {"latLng": self.latLng.to_list(), "zoom": self.zoom}
 
 
 @dataclass(slots=True)
@@ -206,8 +231,9 @@ class FitBoundsCmd:
     corner1: LatLng
     corner2: LatLng
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "fitBounds", {"corner1": self.corner1.to_list(), "corner2": self.corner2.to_list()}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}fitBounds", {"corner1": self.corner1.to_list(), "corner2": self.corner2.to_list()}
 
 
 @dataclass(slots=True)
@@ -215,52 +241,59 @@ class FlyToBoundsCmd:
     corner1: LatLng
     corner2: LatLng
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "flyToBounds", {"corner1": self.corner1.to_list(), "corner2": self.corner2.to_list()}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}flyToBounds", {"corner1": self.corner1.to_list(), "corner2": self.corner2.to_list()}
 
 
 @dataclass(slots=True)
 class SetZoomCmd:
     zoom: int
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "setZoom", {"zoom": self.zoom}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}setZoom", {"zoom": self.zoom}
 
 
 @dataclass(slots=True)
 class ResetViewCmd:
-    def to_push_event(self) -> tuple[str, dict]:
-        return "resetView", {}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}resetView", {}
 
 
 @dataclass(slots=True)
 class HighlightMarkerCmd:
     id: str
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "highlightMarker", {"id": self.id}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}highlightMarker", {"id": self.id}
 
 
 @dataclass(slots=True)
 class HighlightPolylineCmd:
     id: str
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "highlightPolyline", {"id": self.id}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}highlightPolyline", {"id": self.id}
 
 
 @dataclass(slots=True)
 class FollowMarkerCmd:
     id: str
 
-    def to_push_event(self) -> tuple[str, dict]:
-        return "followMarker", {"id": self.id}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}followMarker", {"id": self.id}
 
 
 @dataclass(slots=True)
 class UnfollowMarkerCmd:
-    def to_push_event(self) -> tuple[str, dict]:
-        return "unfollowMarker", {}
+    def to_push_event(self, *, target: str = "") -> tuple[str, dict]:
+        prefix = f"{target}:" if target else ""
+        return f"{prefix}unfollowMarker", {}
 
 
 MapCommand = SetViewCmd | PanToCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd | HighlightPolylineCmd | FollowMarkerCmd | UnfollowMarkerCmd

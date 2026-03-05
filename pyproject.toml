@@ -28,7 +28,11 @@ packages = ["src/pyview_map"]
 [tool.ruff]
 line-length = 120
 # Ruff doesn't support t-strings (PEP 750, Python 3.14) yet — exclude files that use them
-exclude = ["src/pyview_map/views/dynamic_map/dynamic_map.py"]
+exclude = [
+    "src/pyview_map/views/dynamic_map/dynamic_map.py",
+    "src/pyview_map/views/dynamic_list/dynamic_list.py",
+    "src/pyview_map/views/demo/demo.py",
+]
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true

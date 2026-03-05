@@ -1,0 +1,8 @@
+.list-item-highlight {
+    animation: list-highlight-flash 2s ease-out;
+}
+
+@keyframes list-highlight-flash {
+    0% { background-color: #bfdbfe; }
+    100% { background-color: transparent; }
+}

@@ -68,12 +68,12 @@ L.GridLayer.RepeatedMarkers.prototype._removeTile = function(key) {
 // MapInstance — per-map state container
 //
 // Each DynamicMap hook creates a MapInstance. DMarkItem / DPolylineItem hooks
-// find their instance via closest('[data-map-instance]').
+// find their instance via closest('[data-component-id]').
 // ---------------------------------------------------------------------------
 
 class MapInstance {
-  constructor(mapElId) {
-    this.mapElId = mapElId;
+  constructor(componentId) {
+    this.componentId = componentId;
     this.map = null;
     this.repeatedMarkers = null;
     this.markers = new Map();     // dom_id -> L.Marker
@@ -86,7 +86,7 @@ class MapInstance {
 
   getIconRegistry() {
     if (this.iconRegistry) return this.iconRegistry;
-    const el = document.getElementById(this.mapElId);
+    const el = document.getElementById(this.componentId);
     if (el && el.dataset.iconRegistry) {
       try { this.iconRegistry = JSON.parse(el.dataset.iconRegistry); } catch (_) { this.iconRegistry = {}; }
     } else {
@@ -96,7 +96,7 @@ class MapInstance {
   }
 }
 
-// Global registry of MapInstance objects, keyed by the map element ID.
+// Global registry of MapInstance objects, keyed by the component ID.
 const _instances = new Map();
 
 const _FALLBACK_ICON_DEF = {
@@ -125,13 +125,13 @@ function _makeIcon(instance, iconName, heading) {
 
 // ---------------------------------------------------------------------------
 // Find the MapInstance for a hook element by walking up to the nearest
-// [data-map-instance] ancestor.
+// [data-component-id] ancestor.
 // ---------------------------------------------------------------------------
 
 function _findInstance(el) {
-  const wrapper = el.closest("[data-map-instance]");
+  const wrapper = el.closest("[data-component-id]");
   if (!wrapper) return null;
-  return _instances.get(wrapper.dataset.mapInstance) || null;
+  return _instances.get(wrapper.dataset.componentId) || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,8 +275,13 @@ const MAP_EVENTS = [
 
 window.Hooks.DynamicMap = {
   mounted() {
-    const instance = new MapInstance(this.el.id);
-    _instances.set(this.el.id, instance);
+    // Re-use an existing MapInstance if DMarkItem/DPolylineItem hooks already
+    // created one (they mount before DynamicMap and queue pending items).
+    let instance = _instances.get(this.el.id);
+    if (!instance) {
+      instance = new MapInstance(this.el.id);
+      _instances.set(this.el.id, instance);
+    }
 
     instance.map = L.map(this.el).setView([39.5, -98.35], 4);
 
@@ -304,40 +309,45 @@ window.Hooks.DynamicMap = {
     setInterval(() => terminator.setTime(new Date()), 60_000);
 
     // Wire all low-frequency map events
+    const cid = instance.componentId;
     MAP_EVENTS.forEach((evtName) => {
       instance.map.on(evtName, (e) => {
         const center = instance.map.getCenter();
+        const bounds = instance.map.getBounds();
         this.pushEvent("map-event", {
           event: evtName,
           latLng: e.latlng ? [e.latlng.lat, e.latlng.lng] : null,
           center: [center.lat, center.lng],
           zoom: instance.map.getZoom(),
+          bounds: [[bounds.getSouthWest().lat, bounds.getSouthWest().lng],
+                   [bounds.getNorthEast().lat, bounds.getNorthEast().lng]],
         });
       });
     });
 
     // -- Map command handlers from server push_event -------------------------
-    this.handleEvent("setView", ({latLng, zoom}) => instance.map.setView(latLng, zoom));
-    this.handleEvent("panTo", ({latLng}) => {
+    // Events are namespaced with component_id to prevent leaking between instances.
+    this.handleEvent(`${cid}:setView`, ({latLng, zoom}) => instance.map.setView(latLng, zoom));
+    this.handleEvent(`${cid}:panTo`, ({latLng}) => {
       instance.map.setView(latLng, instance.map.getZoom(), {animate: false});
     });
-    this.handleEvent("followMarker", ({id}) => {
-      instance.followMarkerId = id ? `${instance.mapElId}-markers-${id}` : null;
+    this.handleEvent(`${cid}:followMarker`, ({id}) => {
+      instance.followMarkerId = id ? `${cid}-markers-${id}` : null;
     });
-    this.handleEvent("unfollowMarker", () => {
+    this.handleEvent(`${cid}:unfollowMarker`, () => {
       instance.followMarkerId = null;
     });
-    this.handleEvent("flyTo", ({latLng, zoom}) => instance.map.flyTo(latLng, zoom));
-    this.handleEvent("fitBounds", ({corner1, corner2}) => instance.map.fitBounds([corner1, corner2]));
-    this.handleEvent("flyToBounds", ({corner1, corner2}) => instance.map.flyToBounds([corner1, corner2]));
-    this.handleEvent("setZoom", ({zoom}) => instance.map.setZoom(zoom));
-    this.handleEvent("resetView", () => instance.map.setView([39.5, -98.35], 4));
-    this.handleEvent("highlightMarker", ({id}) => {
-      const marker = instance.markers.get(`${instance.mapElId}-markers-${id}`);
+    this.handleEvent(`${cid}:flyTo`, ({latLng, zoom}) => instance.map.flyTo(latLng, zoom));
+    this.handleEvent(`${cid}:fitBounds`, ({corner1, corner2}) => instance.map.fitBounds([corner1, corner2]));
+    this.handleEvent(`${cid}:flyToBounds`, ({corner1, corner2}) => instance.map.flyToBounds([corner1, corner2]));
+    this.handleEvent(`${cid}:setZoom`, ({zoom}) => instance.map.setZoom(zoom));
+    this.handleEvent(`${cid}:resetView`, () => instance.map.setView([39.5, -98.35], 4));
+    this.handleEvent(`${cid}:highlightMarker`, ({id}) => {
+      const marker = instance.markers.get(`${cid}-markers-${id}`);
       if (marker) { instance.map.panTo(marker.getLatLng()); }
     });
-    this.handleEvent("highlightPolyline", ({id}) => {
-      const polyline = instance.polylines.get(`${instance.mapElId}-polylines-${id}`);
+    this.handleEvent(`${cid}:highlightPolyline`, ({id}) => {
+      const polyline = instance.polylines.get(`${cid}-polylines-${id}`);
       if (polyline) { instance.map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
     });
 
@@ -348,11 +358,14 @@ window.Hooks.DynamicMap = {
       if (now - _lastMove < 1000) return;
       _lastMove = now;
       const center = instance.map.getCenter();
+      const bounds = instance.map.getBounds();
       this.pushEvent("map-event", {
         event: "mousemove",
         latLng: [e.latlng.lat, e.latlng.lng],
         center: [center.lat, center.lng],
         zoom: instance.map.getZoom(),
+        bounds: [[bounds.getSouthWest().lat, bounds.getSouthWest().lng],
+                 [bounds.getNorthEast().lat, bounds.getNorthEast().lng]],
       });
     });
   },
@@ -383,13 +396,13 @@ window.Hooks.DMarkItem = {
     const instance = _findInstance(this.el);
     if (!instance || !instance.map) {
       // Map not ready yet — find or create a pending instance and queue
-      const wrapper = this.el.closest("[data-map-instance]");
+      const wrapper = this.el.closest("[data-component-id]");
       if (wrapper) {
-        const mapId = wrapper.dataset.mapInstance;
-        let inst = _instances.get(mapId);
+        const cid = wrapper.dataset.componentId;
+        let inst = _instances.get(cid);
         if (!inst) {
-          inst = new MapInstance(mapId);
-          _instances.set(mapId, inst);
+          inst = new MapInstance(cid);
+          _instances.set(cid, inst);
         }
         inst.pendingMarkers.push({ el: this.el, hookCtx: this });
       }
@@ -459,13 +472,13 @@ window.Hooks.DPolylineItem = {
   mounted() {
     const instance = _findInstance(this.el);
     if (!instance || !instance.map) {
-      const wrapper = this.el.closest("[data-map-instance]");
+      const wrapper = this.el.closest("[data-component-id]");
       if (wrapper) {
-        const mapId = wrapper.dataset.mapInstance;
-        let inst = _instances.get(mapId);
+        const cid = wrapper.dataset.componentId;
+        let inst = _instances.get(cid);
         if (!inst) {
-          inst = new MapInstance(mapId);
-          _instances.set(mapId, inst);
+          inst = new MapInstance(cid);
+          _instances.set(cid, inst);
         }
         inst.pendingPolylines.push({ el: this.el, hookCtx: this });
       }

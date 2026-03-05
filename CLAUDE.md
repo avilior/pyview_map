@@ -12,11 +12,12 @@ uv run pyview-map
 
 Server starts at `http://localhost:8123`.  Available routes:
 
-| Route   | View                      |
-|---------|---------------------------|
-| `/map`  | Static park map           |
-| `/dmap` | Dynamic marker map        |
-| `/mmap` | Multi-map dashboard (2×)  |
+| Route   | View                           |
+|---------|--------------------------------|
+| `/map`  | Static park map                |
+| `/dmap` | Dynamic marker map             |
+| `/mmap` | Multi-map dashboard (2×)       |
+| `/demo` | Map + list demo (2 components) |
 
 ## Project layout
 
@@ -32,25 +33,38 @@ src/pyview_map/
     │   ├── parks.py     # Static park data
     │   └── static/
     │       └── map.js   # ParksMap class + Hooks.ParksMap
-    └── dynamic_map/     # /dmap, /mmap — LiveComponent-based real-time streaming map
-        ├── dynamic_map.py        # DynamicMapComponent (LiveComponent), DynamicMapLiveView, MultiMapLiveView
-        ├── dynamic_map.css
-        ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
-        ├── dmarker.py            # DMarker dataclass (uses LatLng)
-        ├── dpolyline.py          # DPolyline dataclass (uses LatLng)
-        ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
-        ├── api_marker_source.py  # APIMarkerSource — fan-out queues with map_id routing
-        ├── api_polyline_source.py # APIPolylineSource — same fan-out + map_id routing
-        ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
-        ├── map_events.py         # Typed event/command dataclasses + parse_event()
-        ├── command_queue.py      # CommandQueue — fan-out queue for map commands with map_id routing
-        ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
-        ├── icon_registry.py      # DivIcon registry (icons.json → JSON for JS)
-        └── static/
-            ├── dynamic_map.js    # MapInstance class + Hooks: DynamicMap, DMarkItem, DPolylineItem
-            └── icons.json        # Named DivIcon definitions
+    ├── dynamic_map/     # /dmap, /mmap — LiveComponent-based real-time streaming map
+    │   ├── dynamic_map.py        # DynamicMapComponent (LiveComponent), DynamicMapLiveView, MultiMapLiveView
+    │   ├── dynamic_map.css
+    │   ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
+    │   ├── dmarker.py            # DMarker dataclass (uses LatLng)
+    │   ├── dpolyline.py          # DPolyline dataclass (uses LatLng)
+    │   ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
+    │   ├── api_marker_source.py  # APIMarkerSource — fan-out queues with component_id routing
+    │   ├── api_polyline_source.py # APIPolylineSource — same fan-out + component_id routing
+    │   ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
+    │   ├── map_events.py         # Typed event/command dataclasses + parse_event()
+    │   ├── command_queue.py      # CommandQueue — fan-out queue for map commands with component_id routing
+    │   ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
+    │   ├── icon_registry.py      # DivIcon registry (icons.json → JSON for JS)
+    │   └── static/
+    │       ├── dynamic_map.js    # MapInstance class + Hooks: DynamicMap, DMarkItem, DPolylineItem
+    │       └── icons.json        # Named DivIcon definitions
+    ├── dynamic_list/    # List LiveComponent — API-controlled scrollable list
+    │   ├── dynamic_list.py       # DynamicListComponent (LiveComponent), DynamicListLiveView
+    │   ├── dynamic_list.css      # Highlight animation
+    │   ├── dlist_item.py         # DListItem dataclass
+    │   ├── api_list_source.py    # APIListSource — fan-out source for list items
+    │   ├── list_command_queue.py # ListCommandQueue — fan-out queue for list commands
+    │   ├── list_events.py        # ListItemOpEvent, ListItemClickEvent, HighlightListItemCmd
+    │   ├── list_api.py           # JRPC methods registered on global jrpc_service
+    │   └── static/
+    │       └── dynamic_list.js   # Hook: DynamicList (highlight scroll/flash)
+    └── demo/            # /demo — map + list side by side
+        └── demo.py              # DemoLiveView — hosts DynamicMapComponent + DynamicListComponent
 examples/
 ├── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
+├── map_list_demo.py             # Coordinator for /demo — syncs map viewport to list, click→highlight
 └── planes/
     └── mock_planes.py           # Flight simulation — airports, polyline route, followMarker
 ```
@@ -78,7 +92,7 @@ examples/
 - **Map DOM stability** — wrap the Leaflet `div` in `phx-update="ignore"` so LiveView diffs don't touch it.
 - **`json_encode` filter** — registered via `@filters.register` (from `pyview.vendor.ibis`); available in ibis templates.
 - **Ibis template limits** — the ibis template engine does not support subscript syntax (`obj[0]`); use properties or filters instead.
-- **t-string templates (Python 3.14)** — `DynamicMapComponent` and its parent LiveViews use t-string templates with `TemplateView` mixin + `live_component()` / `stream_for()` helpers from PyView. Ibis `.html` templates are still used for the `/map` parks view.
+- **t-string templates (Python 3.14)** — `DynamicMapComponent`, `DynamicListComponent`, and their parent LiveViews use t-string templates with `TemplateView` mixin + `live_component()` / `stream_for()` helpers from PyView. Ibis `.html` templates are still used for the `/map` parks view.
 
 ## Streaming live updates with `Stream`
 
@@ -126,7 +140,7 @@ class MyLiveView(LiveView[MyContext]):
 
 ### t-string template pattern (LiveComponent)
 
-In t-string templates (used by `DynamicMapComponent`), use `stream_for()` from
+In t-string templates (used by `DynamicMapComponent`, `DynamicListComponent`), use `stream_for()` from
 `pyview.template.live_view_template`:
 
 ```python
@@ -174,7 +188,7 @@ DynamicMapLiveView (TemplateView + LiveView)
 ```
 
 `MultiMapLiveView` hosts N independent `DynamicMapComponent` instances, each
-with its own source/queue keyed by `map_id`.
+with its own source/queue keyed by `component_id`.
 
 ### Data flow
 
@@ -190,7 +204,7 @@ with its own source/queue keyed by `map_id`.
 map widget. Key lifecycle:
 
 - **`mount()`** — creates empty `Stream[DMarker]` and `Stream[DPolyline]` with
-  map_id-prefixed names (e.g. `"dmap-markers"`, `"left-markers"`)
+  component_id-prefixed names (e.g. `"dmap-markers"`, `"left-markers"`)
 - **`update()`** — receives `marker_ops`, `polyline_ops`, `ops_version` from parent;
   applies ops to streams only when version changes
 - **`template()`** — t-string with `stream_for()` for markers/polylines,
@@ -198,7 +212,7 @@ map widget. Key lifecycle:
 - **`handle_event()`** — handles `marker-event`, `polyline-event`, `map-event`
   from Leaflet hooks; broadcasts via `EventBroadcaster`
 
-Stream names use the pattern `f"{map_id}-markers"` and `f"{map_id}-polylines"`
+Stream names use the pattern `f"{component_id}-markers"` and `f"{component_id}-polylines"`
 to avoid DOM ID collisions between multiple map instances.
 
 ### Plugging in a custom data source
@@ -248,8 +262,28 @@ LiveView instances via per-instance subscriber queues.
 
 `MultiMapLiveView.with_maps(["left", "right"])` creates a page with N independent
 map instances. Each map gets its own `APIMarkerSource`, `APIPolylineSource`, and
-`CommandQueue` subscriber keyed by `map_id`. External clients target a specific
-map via the `map_id` parameter on any API method (see below).
+`CommandQueue` subscriber keyed by `component_id`. External clients target a specific
+map via the `component_id` parameter on any API method (see below).
+
+## Dynamic list architecture
+
+The dynamic list follows the same **LiveComponent** pattern as the map:
+
+```
+DynamicListLiveView (TemplateView + LiveView)
+├── owns schedule_info("tick") — drives all updates
+├── owns list source, list command queue
+├── template() returns t-string with live_component() call
+│
+└── DynamicListComponent (LiveComponent)
+    ├── owns Stream[DListItem]
+    ├── update() receives pending ops from parent → mutates stream
+    ├── template() returns t-string with stream_for() for clickable items
+    └── handle_event("item-click") → broadcasts ListItemClickEvent
+```
+
+`DynamicListComponent` is reusable — `DemoLiveView` hosts it alongside a
+`DynamicMapComponent` on the `/demo` page.
 
 ## Dependencies
 
@@ -266,9 +300,9 @@ These are installed as git subdirectory dependencies (see `pyproject.toml` `[too
 
 ## JSON-RPC API (`/api/mcp`)
 
-`marker_api.py` registers methods on the global `jrpc_service` from `http_stream_transport`
-and includes `mcp_router` on a FastAPI sub-app mounted at `/api`. The MCP endpoint is at
-`POST /api/mcp`. It is mounted in `__main__.py`:
+`marker_api.py` and `list_api.py` register methods on the global `jrpc_service` from
+`http_stream_transport` and include `mcp_router` on a FastAPI sub-app mounted at `/api`.
+The MCP endpoint is at `POST /api/mcp`. It is mounted in `__main__.py`:
 
 ```python
 app.mount("/api", api_app)
@@ -285,11 +319,11 @@ Pre-configured mock tokens: `tok-acme-001` (Acme Corp), `tok-globex-002`, `tok-i
 
 ### MCP handshake
 
-Clients must complete the MCP lifecycle before calling marker methods:
+Clients must complete the MCP lifecycle before calling methods:
 1. `GET /api/health` — liveness check
 2. `POST /api/mcp` — send `initialize` request → receive session ID
 3. `POST /api/mcp` — send `notifications/initialized` notification
-4. `POST /api/mcp` — call marker methods with `Mcp-Session-Id` header
+4. `POST /api/mcp` — call methods with `Mcp-Session-Id` header
 
 `ClientRPC` from `http_stream_client` handles this automatically via `async with`.
 
@@ -299,9 +333,9 @@ Clients must complete the MCP lifecycle before calling marker methods:
 
 | Method | Params | Effect |
 |---|---|---|
-| `markers.add` | `id`, `name`, `latLng`, `map_id?` | Add marker; enqueue `add` op; broadcast `MarkerOpEvent` |
-| `markers.update` | `id`, `name`, `latLng`, `map_id?` | Move/rename marker; enqueue `update` op; broadcast `MarkerOpEvent` |
-| `markers.delete` | `id`, `map_id?` | Remove marker; enqueue `delete` op; broadcast `MarkerOpEvent` |
+| `markers.add` | `id`, `name`, `latLng`, `component_id?` | Add marker; enqueue `add` op; broadcast `MarkerOpEvent` |
+| `markers.update` | `id`, `name`, `latLng`, `component_id?` | Move/rename marker; enqueue `update` op; broadcast `MarkerOpEvent` |
+| `markers.delete` | `id`, `component_id?` | Remove marker; enqueue `delete` op; broadcast `MarkerOpEvent` |
 | `markers.list` | — | Return current `_markers` dict |
 | `map.events.subscribe` | — | Returns `asyncio.Queue` → SSE stream of `JSONRPCNotification` events |
 
@@ -309,13 +343,23 @@ Clients must complete the MCP lifecycle before calling marker methods:
 
 | Method | Params | Effect |
 |---|---|---|
-| `polylines.add` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?`, `map_id?` | Add polyline; enqueue `add` op; broadcast `PolylineOpEvent` |
-| `polylines.update` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?`, `map_id?` | Update polyline; enqueue `update` op; broadcast `PolylineOpEvent` |
-| `polylines.delete` | `id`, `map_id?` | Remove polyline; enqueue `delete` op; broadcast `PolylineOpEvent` |
+| `polylines.add` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?`, `component_id?` | Add polyline; enqueue `add` op; broadcast `PolylineOpEvent` |
+| `polylines.update` | `id`, `name`, `path`, `color?`, `weight?`, `opacity?`, `dashArray?`, `component_id?` | Update polyline; enqueue `update` op; broadcast `PolylineOpEvent` |
+| `polylines.delete` | `id`, `component_id?` | Remove polyline; enqueue `delete` op; broadcast `PolylineOpEvent` |
 | `polylines.list` | — | Return current `_polylines` dict |
 
 `path` is an array of `[lat, lng]` arrays. Polylines crossing the antimeridian
 (±180°) are automatically unwrapped in JS so they draw the short path.
+
+#### List methods
+
+| Method | Params | Effect |
+|---|---|---|
+| `list.add` | `id`, `label`, `subtitle?`, `at?` (-1=bottom, 0=top), `component_id?` | Add item at position |
+| `list.remove` | `id`, `component_id?` | Remove item by id |
+| `list.clear` | `component_id?` | Remove all items |
+| `list.highlight` | `id`, `component_id?` | Push highlight command (scroll + flash) |
+| `list.list` | — | Return current items |
 
 #### Map command methods
 
@@ -325,40 +369,60 @@ a command to `CommandQueue`; the LiveView tick drains the queue and calls
 
 | Method | Params | JS effect |
 |---|---|---|
-| `map.setView` | `latLng`, `zoom`, `map_id?` | `map.setView(latLng, zoom)` |
-| `map.panTo` | `latLng`, `map_id?` | `map.setView(latLng, currentZoom)` (instant, keeps zoom) |
-| `map.flyTo` | `latLng`, `zoom`, `map_id?` | `map.flyTo(latLng, zoom)` (animated) |
-| `map.fitBounds` | `corner1`, `corner2`, `map_id?` | `map.fitBounds([corner1, corner2])` |
-| `map.flyToBounds` | `corner1`, `corner2`, `map_id?` | `map.flyToBounds([corner1, corner2])` (animated) |
-| `map.setZoom` | `zoom`, `map_id?` | `map.setZoom(zoom)` |
-| `map.resetView` | `map_id?` | Reset to US overview `[39.5, -98.35]` zoom 4 |
-| `map.highlightMarker` | `id`, `map_id?` | Pan to marker and open its tooltip |
-| `map.highlightPolyline` | `id`, `map_id?` | Fit bounds to polyline and open its tooltip |
-| `map.followMarker` | `id`, `map_id?` | Auto-pan to marker on every update (see below) |
-| `map.unfollowMarker` | `map_id?` | Stop auto-panning |
+| `map.setView` | `latLng`, `zoom`, `component_id?` | `map.setView(latLng, zoom)` |
+| `map.panTo` | `latLng`, `component_id?` | `map.setView(latLng, currentZoom)` (instant, keeps zoom) |
+| `map.flyTo` | `latLng`, `zoom`, `component_id?` | `map.flyTo(latLng, zoom)` (animated) |
+| `map.fitBounds` | `corner1`, `corner2`, `component_id?` | `map.fitBounds([corner1, corner2])` |
+| `map.flyToBounds` | `corner1`, `corner2`, `component_id?` | `map.flyToBounds([corner1, corner2])` (animated) |
+| `map.setZoom` | `zoom`, `component_id?` | `map.setZoom(zoom)` |
+| `map.resetView` | `component_id?` | Reset to US overview `[39.5, -98.35]` zoom 4 |
+| `map.highlightMarker` | `id`, `component_id?` | Pan to marker and open its tooltip |
+| `map.highlightPolyline` | `id`, `component_id?` | Fit bounds to polyline and open its tooltip |
+| `map.followMarker` | `id`, `component_id?` | Auto-pan to marker on every update (see below) |
+| `map.unfollowMarker` | `component_id?` | Stop auto-panning |
 
 All `latLng`/`corner` params are `[lat, lng]` arrays on the wire; converted to
 `LatLng` at the API boundary in `marker_api.py`.
 
-#### `map_id` routing
+#### `component_id` routing
 
-All marker, polyline, and map command methods accept an optional `map_id` parameter:
+All marker, polyline, list, and map command methods accept an optional `component_id` parameter:
 
-- **`map_id` omitted or `None`** — operation is broadcast to ALL map instances (backwards compatible)
-- **`map_id="left"`** — operation is routed only to the map instance subscribed with that ID
+- **`component_id` omitted or `None`** — operation is broadcast to ALL component instances (backwards compatible)
+- **`component_id="left"`** — operation is routed only to the component instance subscribed with that ID
 
 ```python
 # Target a specific map on the /mmap page:
-await _send(rpc, "markers.add", {"id": "m1", "name": "HQ", "latLng": [40.7, -74.0], "map_id": "left"})
+await _send(rpc, "markers.add", {"id": "m1", "name": "HQ", "latLng": [40.7, -74.0], "component_id": "left"})
 
-# Broadcast to all maps (backwards compatible):
+# Target the list on the /demo page:
+await _send(rpc, "list.add", {"id": "item1", "label": "Item 1", "component_id": "demo-list"})
+
+# Broadcast to all instances (backwards compatible):
 await _send(rpc, "markers.add", {"id": "m1", "name": "HQ", "latLng": [40.7, -74.0]})
 ```
 
-Internally, `APIMarkerSource`, `APIPolylineSource`, and `CommandQueue` use
-`_subscribers: dict[str | None, set[Queue]]` keyed by `map_id`. The `None` key
-holds broadcast subscribers. `push()` fans out to `_subscribers[map_id]` +
-`_subscribers[None]`, with a `seen` set to avoid double-delivery.
+Internally, `APIMarkerSource`, `APIPolylineSource`, `APIListSource`, `CommandQueue`,
+and `ListCommandQueue` use `_subscribers: dict[str | None, set[Queue]]` keyed by
+`component_id`. The `None` key holds broadcast subscribers. `push()` fans out to
+`_subscribers[component_id]` + `_subscribers[None]`, with a `seen` set to avoid double-delivery.
+
+#### Namespaced push_event
+
+Server-to-client commands are namespaced with `component_id` to prevent leaking
+between components on the same page:
+
+```python
+# Server side (dynamic_map.py):
+event_name, payload = cmd.to_push_event(target=component_id)
+await socket.push_event(event_name, payload)
+# → pushes "left:setView" instead of "setView"
+
+# JS side (dynamic_map.js):
+this.handleEvent(`${cid}:setView`, handler);
+```
+
+All command dataclasses accept `target` in `to_push_event(*, target="")`.
 
 #### Follow-marker (continuous tracking)
 
@@ -384,11 +448,12 @@ await _send(rpc, "map.unfollowMarker", {})
 await _send(rpc, "map.followMarker", {"id": "plane2"})
 ```
 
-`APIMarkerSource`, `APIPolylineSource`, and `CommandQueue` use the **bounded-queue
-fan-out** pattern (same as `EventBroadcaster`): each LiveView instance gets its
-own subscriber queue; push methods fan out to subscribers by `map_id`; full queues
-are auto-discarded. The shared `_markers`/`_polylines` dicts stay class-level so
-all instances see the same state.
+`APIMarkerSource`, `APIPolylineSource`, `APIListSource`, `CommandQueue`, and
+`ListCommandQueue` use the **bounded-queue fan-out** pattern (same as
+`EventBroadcaster`): each LiveView instance gets its own subscriber queue; push
+methods fan out to subscribers by `component_id`; full queues are auto-discarded.
+The shared `_markers`/`_polylines`/`_items` dicts stay class-level so all instances
+see the same state.
 
 ### Hook init ordering pitfall
 
@@ -401,11 +466,12 @@ Leaflet map is created.
 ### JS: per-instance state (MapInstance)
 
 Multiple maps on one page require per-instance state. `dynamic_map.js` uses a
-`MapInstance` class and a global `_instances` Map keyed by map element ID:
+`MapInstance` class and a global `_instances` Map keyed by component ID:
 
 ```javascript
 class MapInstance {
-  constructor(mapEl) {
+  constructor(componentId) {
+    this.componentId = componentId;
     this.map = null;              // Leaflet map
     this.markers = new Map();      // domId → L.marker
     this.polylines = new Map();    // domId → L.polyline
@@ -414,13 +480,12 @@ class MapInstance {
     this.pendingMarkers = [];      // hooks queued before map init
     this.pendingPolylines = [];
     this.iconRegistry = {};
-    this.mapElId = mapEl.id;
   }
 }
 ```
 
 Hooks find their instance via `_findInstance(el)` which walks up the DOM with
-`el.closest('[data-map-instance]')` and looks up the instance in `_instances`.
+`el.closest('[data-component-id]')` and looks up the instance in `_instances`.
 All marker/polyline/command logic uses `instance.xxx` instead of module-level
 globals. RepeatedMarkers prototype patches remain at module level.
 
@@ -447,37 +512,36 @@ Conversion happens at boundaries:
 External clients can control the browser map via `map.*` JSON-RPC methods.
 The flow is:
 
-1. **Client** calls `map.flyTo`, `map.setZoom`, etc. via JSON-RPC (optionally with `map_id`)
-2. **`marker_api.py`** handler constructs a command dataclass and calls `CommandQueue.push(cmd, map_id=map_id)`
-3. **`CommandQueue`** fans out the command to subscriber queues matching the `map_id`
+1. **Client** calls `map.flyTo`, `map.setZoom`, etc. via JSON-RPC (optionally with `component_id`)
+2. **`marker_api.py`** handler constructs a command dataclass and calls `CommandQueue.push(cmd, component_id=component_id)`
+3. **`CommandQueue`** fans out the command to subscriber queues matching the `component_id`
 4. **`dynamic_map.py`** parent LiveView `handle_info()` drains command queues on each tick, calling
-   `socket.push_event()` for each command
-5. **`dynamic_map.js`** `handleEvent` receivers on the `DynamicMap` hook call the corresponding
+   `socket.push_event()` with namespaced event names (e.g. `"left:setView"`)
+5. **`dynamic_map.js`** namespaced `handleEvent` receivers on the `DynamicMap` hook call the corresponding
    Leaflet method on the correct `MapInstance`
 
 Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `PanToCmd`,
 `FlyToCmd`, `FitBoundsCmd`, `FlyToBoundsCmd`, `SetZoomCmd`, `ResetViewCmd`,
 `HighlightMarkerCmd`, `HighlightPolylineCmd`, `FollowMarkerCmd`, `UnfollowMarkerCmd`).
-Each has `to_push_event() -> tuple[str, dict]`.
+Each has `to_push_event(*, target="") -> tuple[str, dict]`.
 
 `CommandQueue` in `command_queue.py` uses the bounded-queue fan-out pattern:
-each LiveView calls `CommandQueue.subscribe(map_id=...)` on mount and drains its
-queue on each tick. `push(cmd, map_id=...)` fans out to matching subscriber
+each LiveView calls `CommandQueue.subscribe(component_id=...)` on mount and drains its
+queue on each tick. `push(cmd, component_id=...)` fans out to matching subscriber
 queues; full queues are auto-discarded.
 
 ## Event streaming to external clients
 
-Browser map/marker events and API marker operations are broadcast to external
+Browser map/marker/list events and API operations are broadcast to external
 clients via SSE using `EventBroadcaster` and the `map.events.subscribe` method.
 
 ### Architecture
 
-1. **Browser → LiveView** — `handle_event()` in `dynamic_map.py` receives
-   `marker-event`, `polyline-event`, and `map-event` from Leaflet hooks,
-   constructs typed event dataclasses, and calls `EventBroadcaster.broadcast()`.
-2. **API → broadcast** — `markers.add/update/delete` and `polylines.add/update/delete`
-   handlers in `marker_api.py` broadcast `MarkerOpEvent`/`PolylineOpEvent` after
-   each mutation.
+1. **Browser → LiveView** — `handle_event()` in `dynamic_map.py` / `dynamic_list.py`
+   receives events from hooks, constructs typed event dataclasses, and calls
+   `EventBroadcaster.broadcast()`.
+2. **API → broadcast** — `markers.add/update/delete`, `polylines.add/update/delete`,
+   and `list.add/remove/clear` handlers broadcast events after each mutation.
 3. **EventBroadcaster** — maintains a set of subscriber `asyncio.Queue`s (bounded,
    maxsize=256). `broadcast()` is non-blocking (`put_nowait`); slow consumers are
    dropped. The `JSONRPCNotification` is built once and shared across all subscribers.
@@ -485,7 +549,7 @@ clients via SSE using `EventBroadcaster` and the `map.events.subscribe` method.
    the queue return and opens an SSE stream, sending `JSONRPCNotification` messages
    with method `notifications/map.event`.
 
-### Event types (`map_events.py`)
+### Event types (`map_events.py` + `list_events.py`)
 
 All events are `@dataclass(slots=True)` for minimal allocation overhead.
 Each has `to_dict()` for serialization; `parse_event()` reconstructs them
@@ -497,6 +561,7 @@ from pyview_map.views.dynamic_map.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, PolylineOpEvent, PolylineEvent,
     BroadcastEvent, parse_event,
 )
+from pyview_map.views.dynamic_list.list_events import ListItemOpEvent, ListItemClickEvent
 ```
 
 **`MarkerOpEvent`** — marker CRUD from the API:
@@ -513,10 +578,10 @@ MarkerEvent(event="click", id="markers-abc", name="Alpha-01", latLng=LatLng(39.5
 # to_dict() → {"type": "marker-event", "event": ..., "id": ..., "name": ..., "latLng": [lat, lng]}
 ```
 
-**`MapEvent`** — browser map interaction:
+**`MapEvent`** — browser map interaction (now includes `bounds`):
 ```python
-MapEvent(event="zoomend", center=LatLng(39.5, -98.3), zoom=6, latLng=None)
-# to_dict() → {"type": "map-event", "event": ..., "center": [lat, lng], "zoom": ..., "latLng": ...}
+MapEvent(event="zoomend", center=LatLng(39.5, -98.3), zoom=6, latLng=None, bounds=(LatLng(30, -110), LatLng(50, -80)))
+# to_dict() → {"type": "map-event", "event": ..., "center": ..., "zoom": ..., "bounds": [[sw_lat, sw_lng], [ne_lat, ne_lng]]}
 ```
 
 **`PolylineOpEvent`** — polyline CRUD from the API:
@@ -531,10 +596,25 @@ PolylineEvent(event="click", id="polylines-route1", name="Route 1", latLng=LatLn
 # to_dict() → {"type": "polyline-event", "event": ..., "id": ..., "name": ..., "latLng": [lat, lng]}
 ```
 
+**`ListItemOpEvent`** — list item CRUD from the API:
+```python
+ListItemOpEvent(op="add", id="item1", label="Airport JFK", subtitle="(40.64, -73.78)")
+ListItemOpEvent(op="delete", id="item1")
+ListItemOpEvent(op="clear")
+# to_dict() → {"type": "list-item-op", "op": ..., "id": ..., "label": ..., "subtitle": ...}
+```
+
+**`ListItemClickEvent`** — user clicked a list item:
+```python
+ListItemClickEvent(event="click", id="item1", label="Airport JFK")
+# to_dict() → {"type": "list-item-event", "event": ..., "id": ..., "label": ...}
+```
+
 ### Client subscription example
 
 ```python
 from pyview_map.views.dynamic_map.map_events import MarkerOpEvent, MarkerEvent, MapEvent, parse_event
+from pyview_map.views.dynamic_list.list_events import ListItemClickEvent
 
 req = JSONRPCRequest(method="map.events.subscribe")
 async for msg in rpc.send_request(req):
@@ -545,6 +625,7 @@ async for msg in rpc.send_request(req):
                 case MarkerOpEvent(): ...
                 case MarkerEvent():   ...
                 case MapEvent():      ...
+                case ListItemClickEvent(): ...
         case JSONRPCResponse():
             break  # end of channel
 ```

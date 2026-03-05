@@ -13,6 +13,7 @@ app.mount(
             ("pyview", "static"),
             ("pyview_map.views.maps", "static"),
             ("pyview_map.views.dynamic_map", "static"),
+            ("pyview_map.views.dynamic_list", "static"),
         ]
     ),
     name="static",
@@ -65,6 +66,7 @@ css = """
 <script src="https://unpkg.com/leaflet.repeatedmarkers@latest/Leaflet.RepeatedMarkers.js"></script>
 <script defer type="text/javascript" src="/static/map.js"></script>
 <script defer type="text/javascript" src="/static/dynamic_map.js"></script>
+<script defer type="text/javascript" src="/static/dynamic_list.js"></script>
 """
 
 def content_wrapper(context, content: Markup) -> Markup:
