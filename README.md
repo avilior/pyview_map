@@ -94,7 +94,8 @@ POST /api/rpc markers.add
 Implement the `MarkerSource` protocol and register it with `with_source()`:
 
 ```python
-from pyview_map.views.dynamic_map.dynamic_map import DMarker
+from pyview_map.views.components.dynamic_map.dynamic_map_component import DMarker
+
 
 class MySource:
     @property

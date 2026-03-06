@@ -1,4 +1,4 @@
-"""map_list_demo.py — external coordinator for the /demo page.
+"""map_list_demo.py — external coordinator for the /map_list_demo page.
 
 Wires map ↔ list interaction to prove the components are independent:
 
@@ -10,13 +10,13 @@ Wires map ↔ list interaction to prove the components are independent:
 3. On ListItemClickEvent from SSE:
    - Highlight the corresponding marker on the map
 
-Run this while the server is up and /demo is open:
+Run this while the server is up and /map_list_demo is open:
 
     uv run python examples/map_list_demo.py
 
 Optionally add some airports first:
 
-    uv run python examples/planes/mock_planes.py --component-id demo-map
+    uv run python examples/planes/mock_planes.py --component-id map_list_demo-map
 """
 
 import asyncio
@@ -29,12 +29,12 @@ from jrpc_common.jrpc_model import (
     JSONRPCErrorResponse,
 )
 
-from pyview_map.views.dynamic_map.map_events import (
+from pyview_map.views.components.dynamic_map.map_events import (
     MapEvent,
     MarkerOpEvent,
     parse_event,
 )
-from pyview_map.views.dynamic_list.list_events import ListItemClickEvent
+from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
 
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"
@@ -71,13 +71,13 @@ async def sync_list_to_viewport(rpc: ClientRPC, bounds: list[list[float]]) -> No
     ]
 
     # Clear and re-populate list
-    await _send(rpc, "list.clear", {"component_id": "demo-list"})
+    await _send(rpc, "list.clear", {"component_id": "map_list_demo-list"})
     for m in visible:
         await _send(rpc, "list.add", {
             "id": m["id"],
             "label": m["name"],
             "subtitle": f"({m['latLng'][0]:.2f}, {m['latLng'][1]:.2f})",
-            "component_id": "demo-list",
+            "component_id": "map_list_demo-list",
         })
 
     print(f"  Synced list: {len(visible)} markers in viewport")
@@ -103,7 +103,7 @@ async def listen_and_coordinate(rpc: ClientRPC) -> None:
                         print(f"  [list-click] {evt.id} → highlighting on map")
                         await _send(rpc, "map.highlightMarker", {
                             "id": evt.id,
-                            "component_id": "demo-map",
+                            "component_id": "map_list_demo-map",
                         })
 
                     case _:
@@ -121,7 +121,7 @@ async def main() -> None:
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
         print("Connected. Listening for events...")
         print("Open http://localhost:8123/demo and add markers to see coordination.")
-        print("Tip: run 'uv run python examples/planes/mock_planes.py --component-id demo-map' in another terminal")
+        print("Tip: run 'uv run python examples/planes/mock_planes.py --component-id map_list_demo-map' in another terminal")
         try:
             await listen_and_coordinate(rpc)
         except (KeyboardInterrupt, asyncio.CancelledError):

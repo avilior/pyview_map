@@ -7,21 +7,21 @@ from pyview.meta import PyViewMeta
 from pyview.template import TemplateView
 from pyview.template.live_view_template import live_component
 
-from pyview_map.views.dynamic_map.api_marker_source import APIMarkerSource
-from pyview_map.views.dynamic_map.api_polyline_source import APIPolylineSource
-from pyview_map.views.dynamic_map.command_queue import CommandQueue
-from pyview_map.views.dynamic_map.dmarker import DMarker
-from pyview_map.views.dynamic_map.dpolyline import DPolyline
-from pyview_map.views.dynamic_map.dynamic_map import DynamicMapComponent
-from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
-from pyview_map.views.dynamic_map.icon_registry import icon_registry
-from pyview_map.views.dynamic_map.latlng import LatLng
-from pyview_map.views.dynamic_map.map_events import MapEvent, MarkerEvent, PolylineEvent
-from pyview_map.views.dynamic_list.api_list_source import APIListSource
-from pyview_map.views.dynamic_list.dlist_item import DListItem
-from pyview_map.views.dynamic_list.dynamic_list import DynamicListComponent
-from pyview_map.views.dynamic_list.list_command_queue import ListCommandQueue
-from pyview_map.views.dynamic_list.list_events import ListItemClickEvent
+from pyview_map.views.components.dynamic_map.api_marker_source import APIMarkerSource
+from pyview_map.views.components.dynamic_map.api_polyline_source import APIPolylineSource
+from pyview_map.views.components.dynamic_map.command_queue import CommandQueue
+from pyview_map.views.components.dynamic_map.dmarker import DMarker
+from pyview_map.views.components.dynamic_map.dpolyline import DPolyline
+from pyview_map.views.components.dynamic_map.dynamic_map_component import DynamicMapComponent
+from pyview_map.views.components.dynamic_map.event_broadcaster import EventBroadcaster
+from pyview_map.views.components.dynamic_map.icon_registry import icon_registry
+from pyview_map.views.components.dynamic_map.latlng import LatLng
+from pyview_map.views.components.dynamic_map.map_events import MapEvent, MarkerEvent, PolylineEvent
+from pyview_map.views.components.dynamic_list.api_list_source import APIListSource
+from pyview_map.views.components.dynamic_list.dlist_item import DListItem
+from pyview_map.views.components.dynamic_list.dynamic_list import DynamicListComponent
+from pyview_map.views.components.dynamic_list.list_command_queue import ListCommandQueue
+from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
 
 
 @dataclass
@@ -45,15 +45,15 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
     """Demo page hosting a DynamicMapComponent and DynamicListComponent side by side.
 
     Usage:
-        app.add_live_view("/demo", DemoLiveView)
+        app.add_live_view("/map_list_demo", DemoLiveView)
     """
 
     tick_interval: float = 1.2
 
     async def mount(self, socket: LiveViewSocket[DemoPageContext], session):
-        self._marker_source = APIMarkerSource(component_id="demo-map")
-        self._polyline_source = APIPolylineSource(component_id="demo-map")
-        self._list_source = APIListSource(component_id="demo-list")
+        self._marker_source = APIMarkerSource(component_id="map_list_demo-map")
+        self._polyline_source = APIPolylineSource(component_id="map_list_demo-map")
+        self._list_source = APIListSource(component_id="map_list_demo-list")
 
         socket.context = DemoPageContext(
             initial_markers=self._marker_source.markers,
@@ -63,8 +63,8 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
         )
 
         if socket.connected:
-            self._map_cmd_queue = CommandQueue.subscribe(component_id="demo-map")
-            self._list_cmd_queue = ListCommandQueue.subscribe(component_id="demo-list")
+            self._map_cmd_queue = CommandQueue.subscribe(component_id="map_list_demo-map")
+            self._list_cmd_queue = ListCommandQueue.subscribe(component_id="map_list_demo-list")
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DemoPageContext]):
@@ -93,7 +93,7 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
                 cmd = self._map_cmd_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            event_name, payload = cmd.to_push_event(target="demo-map")
+            event_name, payload = cmd.to_push_event(target="map_list_demo-map")
             await socket.push_event(event_name, payload)
 
         # Drain list updates
@@ -110,7 +110,7 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
                 cmd = self._list_cmd_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            event_name, payload = cmd.to_push_event(target="demo-list")
+            event_name, payload = cmd.to_push_event(target="map_list_demo-list")
             await socket.push_event(event_name, payload)
 
         # Update map context
@@ -178,21 +178,21 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
     def template(self, assigns: DemoPageContext, meta: PyViewMeta):
         last_event = assigns.last_event
 
-        map_comp = live_component(DynamicMapComponent, id="demo-map",
+        map_comp = live_component(DynamicMapComponent, id="map_list_demo-map",
             initial_markers=assigns.initial_markers,
             initial_polylines=assigns.initial_polylines,
             icon_registry_json=assigns.icon_registry_json,
             marker_ops=assigns.marker_ops,
             polyline_ops=assigns.polyline_ops,
             ops_version=assigns.map_ops_version,
-            component_id="demo-map",
+            component_id="map_list_demo-map",
         )
 
-        list_comp = live_component(DynamicListComponent, id="demo-list",
+        list_comp = live_component(DynamicListComponent, id="map_list_demo-list",
             initial_items=assigns.initial_items,
             list_ops=assigns.list_ops,
             ops_version=assigns.list_ops_version,
-            component_id="demo-list",
+            component_id="map_list_demo-list",
         )
 
         event_line = t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>' if last_event else t'<div class="text-xs text-gray-400">No events yet</div>'
@@ -201,7 +201,7 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
         <h1 class="text-3xl font-bold text-gray-900 mb-1">Map + List Demo</h1>
         <p class="text-sm text-gray-500 mb-6">
-            Two independent components — map (<code>demo-map</code>) and list (<code>demo-list</code>) — driven by the JSON-RPC API.
+            Two independent components — map (<code>map_list_demo-map</code>) and list (<code>map_list_demo-list</code>) — driven by the JSON-RPC API.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2">

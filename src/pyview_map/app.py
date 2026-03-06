@@ -11,9 +11,9 @@ app.mount(
     StaticFiles(
         packages=[
             ("pyview", "static"),
-            ("pyview_map.views.maps", "static"),
-            ("pyview_map.views.dynamic_map", "static"),
-            ("pyview_map.views.dynamic_list", "static"),
+            ("pyview_map.views.park_map_demo", "static"),
+            ("pyview_map.views.components.dynamic_map", "static"),
+            ("pyview_map.views.components.dynamic_list", "static"),
         ]
     ),
     name="static",
@@ -54,7 +54,7 @@ css = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/nprogress@0.2.0/nprogress.css" />
 
-<!-- Leaflet CSS + JS for maps example -->
+<!-- Leaflet CSS + JS for park_map_demo example -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
@@ -68,6 +68,7 @@ css = """
 <script defer type="text/javascript" src="/static/dynamic_map.js"></script>
 <script defer type="text/javascript" src="/static/dynamic_list.js"></script>
 """
+
 
 def content_wrapper(context, content: Markup) -> Markup:
     # The index page renders its own header — skip the nav wrapper

@@ -174,7 +174,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 latLng=LatLng.from_list(params["latLng"]),
             )
         case "list-item-op":
-            from pyview_map.views.dynamic_list.list_events import ListItemOpEvent
+            from pyview_map.views.components.dynamic_list.list_events import ListItemOpEvent
             return ListItemOpEvent(
                 op=params["op"],
                 id=params.get("id", ""),
@@ -183,7 +183,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 at=params.get("at", -1),
             )
         case "list-item-event":
-            from pyview_map.views.dynamic_list.list_events import ListItemClickEvent
+            from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
             return ListItemClickEvent(
                 event=params["event"],
                 id=params["id"],

@@ -1,9 +1,9 @@
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 
-from pyview_map.views.dynamic_list.api_list_source import APIListSource
-from pyview_map.views.dynamic_list.list_command_queue import ListCommandQueue
-from pyview_map.views.dynamic_list.list_events import HighlightListItemCmd, ListItemOpEvent
-from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
+from .api_list_source import APIListSource
+from .list_command_queue import ListCommandQueue
+from .list_events import HighlightListItemCmd, ListItemOpEvent
+from pyview_map.views.components.dynamic_map.event_broadcaster import EventBroadcaster
 
 
 @jrpc_service.request("list.add")

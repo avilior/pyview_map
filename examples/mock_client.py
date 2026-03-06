@@ -13,7 +13,7 @@ import uuid
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
-from pyview_map.views.dynamic_map.map_events import (
+from pyview_map.views.components.dynamic_map.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
 )
 
@@ -105,7 +105,7 @@ async def listen_events(rpc: ClientRPC) -> None:
 
 async def run_command_demo(rpc: ClientRPC, markers: dict[str, dict]) -> None:
     """Demonstrate remote map control commands."""
-    print("\n--- Command demo ---")
+    print("\n--- Command map_list_demo ---")
 
     # Pick first marker
     first_id, first_m = next(iter(markers.items()))
@@ -131,7 +131,7 @@ async def run_command_demo(rpc: ClientRPC, markers: dict[str, dict]) -> None:
     await _send(rpc, "map.resetView")
     await asyncio.sleep(2)
 
-    print("--- Command demo complete ---\n")
+    print("--- Command map_list_demo complete ---\n")
 
 
 async def main() -> None:
@@ -167,7 +167,7 @@ async def main() -> None:
 
         print(f"\nSeeded {initial_count} markers.")
 
-        # Run the command demo
+        # Run the command map_list_demo
         await run_command_demo(rpc, markers)
 
         print("Starting update loop (Ctrl-C to stop)...\n")

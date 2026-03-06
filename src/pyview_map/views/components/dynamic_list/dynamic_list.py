@@ -13,7 +13,7 @@ from pyview.template.live_view_template import live_component, stream_for
 
 from .api_list_source import APIListSource
 from .dlist_item import DListItem
-from pyview_map.views.dynamic_map.event_broadcaster import EventBroadcaster
+from pyview_map.views.components.dynamic_map.event_broadcaster import EventBroadcaster
 from .list_command_queue import ListCommandQueue
 from .list_events import ListItemClickEvent
 
