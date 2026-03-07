@@ -8,24 +8,19 @@ class FanOutSource:
     """Generic fan-out source with shared state and channel/cid routing.
 
     Provides subscriber management, a per-instance bounded queue, shared
-    item storage partitioned by channel, and the ``_broadcast`` fan-out
-    method.  Subclasses only need to define domain-specific ``push_*``
-    class methods and an items property.
+    item storage partitioned by channel, and the broadcast fan-out.
 
     Each subclass gets its own class-level ``_subscribers`` and ``_items``
     dicts via ``__init_subclass__``.
 
-    Usage::
+    Callers use ``push_op`` to store/remove items and broadcast op dicts
+    in a single call::
 
-        class APIMarkerSource(FanOutSource):
-            @property
-            def markers(self) -> list[DMarker]:
-                return self._items_list()
-
-            @classmethod
-            def push_add(cls, id, name, lat_lng, *, channel, cid="*"):
-                cls._store(channel, id, DMarker(...))
-                cls._broadcast({...}, channel=channel, cid=cid)
+        APIMarkerSource.push_op(
+            {"op": "add", "id": "m1", ...},
+            channel="dmap",
+            item=DMarker(id="m1", ...),
+        )
     """
 
     # channel → {cid → queue}
@@ -55,27 +50,32 @@ class FanOutSource:
         """Return the current items for this instance's channel."""
         return list(type(self)._items.get(self._channel, {}).values())
 
-    # -- Shared state helpers (called from subclass push_* methods) --
-
-    @classmethod
-    def _store(cls, channel: str, id: str, item: Any) -> None:
-        cls._items.setdefault(channel, {})[id] = item
-
-    @classmethod
-    def _get(cls, channel: str, id: str) -> Any | None:
-        return cls._items.get(channel, {}).get(id)
-
-    @classmethod
-    def _remove(cls, channel: str, id: str) -> None:
-        cls._items.get(channel, {}).pop(id, None)
-
-    @classmethod
-    def _clear(cls, channel: str) -> None:
-        cls._items.pop(channel, None)
-
     @classmethod
     def _channel_items(cls, channel: str) -> dict[str, Any]:
         return cls._items.get(channel, {})
+
+    # -- Public API --
+
+    @classmethod
+    def push_op(
+        cls, op: dict, *, channel: str, cid: str = "*", item: Any = None,
+    ) -> None:
+        """Store/remove an item and broadcast the op dict.
+
+        For add/update ops, pass ``item`` to store it in shared state.
+        For delete ops, the item is removed by ``op["id"]``.
+        For clear ops, all items for the channel are removed.
+        """
+        match op.get("op"):
+            case "add" | "update":
+                if item is not None:
+                    cls._items.setdefault(channel, {})[op["id"]] = item
+            case "delete":
+                cls._items.get(channel, {}).pop(op.get("id", ""), None)
+            case "clear":
+                cls._items.pop(channel, None)
+
+        cls._broadcast(op, channel=channel, cid=cid)
 
     # -- Fan-out --
 

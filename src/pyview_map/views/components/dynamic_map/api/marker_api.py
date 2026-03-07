@@ -10,6 +10,8 @@ from pyview_map.views.components.dynamic_map.sources.api_polyline_source import 
 from pyview_map.views.components.dynamic_map.sources.command_queue import CommandQueue
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
+from pyview_map.views.components.dynamic_map.models.dpolyline import DPolyline
 from pyview_map.views.components.dynamic_map.models.map_events import (
     FitBoundsCmd,
     FlyToBoundsCmd,
@@ -36,7 +38,13 @@ def markers_add(
     cid: str = "*",
 ) -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_add(id, name, ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid)
+    marker = DMarker(id=id, name=name, lat_lng=ll, icon=icon, heading=heading, speed=speed)
+    op: dict = {"op": "add", "id": id, "name": name, "latLng": latLng, "icon": icon}
+    if heading is not None:
+        op["heading"] = heading
+    if speed is not None:
+        op["speed"] = speed
+    APIMarkerSource.push_op(op, channel=channel, cid=cid, item=marker)
     EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
     return {"ok": True}
 
@@ -48,21 +56,27 @@ def markers_update(
     cid: str = "*",
 ) -> dict:
     ll = LatLng.from_list(latLng)
-    APIMarkerSource.push_update(id, name, ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid)
+    marker = DMarker(id=id, name=name, lat_lng=ll, icon=icon, heading=heading, speed=speed)
+    op: dict = {"op": "update", "id": id, "name": name, "latLng": latLng, "icon": icon}
+    if heading is not None:
+        op["heading"] = heading
+    if speed is not None:
+        op["speed"] = speed
+    APIMarkerSource.push_op(op, channel=channel, cid=cid, item=marker)
     EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.delete")
 def markers_delete(id: str, channel: str, cid: str = "*") -> dict:
-    APIMarkerSource.push_delete(id, channel=channel, cid=cid)
+    APIMarkerSource.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
     EventBroadcaster.broadcast(MarkerOpEvent(op="delete", id=id, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.list")
 def markers_list(channel: str) -> dict:
-    return {"markers": [m.to_dict() for m in APIMarkerSource._markers.get(channel, {}).values()]}
+    return {"markers": [m.to_dict() for m in APIMarkerSource._channel_items(channel).values()]}
 
 
 @jrpc_service.request("map.events.subscribe")
@@ -147,7 +161,11 @@ def polylines_add(
     dashArray: str | None = None, cid: str = "*",
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    APIPolylineSource.push_add(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray, channel=channel, cid=cid)
+    polyline = DPolyline(id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    op: dict = {"op": "add", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
+    if dashArray is not None:
+        op["dashArray"] = dashArray
+    APIPolylineSource.push_op(op, channel=channel, cid=cid, item=polyline)
     EventBroadcaster.broadcast(PolylineOpEvent(op="add", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
     return {"ok": True}
 
@@ -159,21 +177,25 @@ def polylines_update(
     dashArray: str | None = None, cid: str = "*",
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    APIPolylineSource.push_update(id, name, ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray, channel=channel, cid=cid)
+    polyline = DPolyline(id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    op: dict = {"op": "update", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
+    if dashArray is not None:
+        op["dashArray"] = dashArray
+    APIPolylineSource.push_op(op, channel=channel, cid=cid, item=polyline)
     EventBroadcaster.broadcast(PolylineOpEvent(op="update", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.delete")
 def polylines_delete(id: str, channel: str, cid: str = "*") -> dict:
-    APIPolylineSource.push_delete(id, channel=channel, cid=cid)
+    APIPolylineSource.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
     EventBroadcaster.broadcast(PolylineOpEvent(op="delete", id=id, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.list")
 def polylines_list(channel: str) -> dict:
-    return {"polylines": [p.to_dict() for p in APIPolylineSource._polylines.get(channel, {}).values()]}
+    return {"polylines": [p.to_dict() for p in APIPolylineSource._channel_items(channel).values()]}
 
 
 # -- FastAPI sub-app mounted at /api in __main__.py -----------------------
