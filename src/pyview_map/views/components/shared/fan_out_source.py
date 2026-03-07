@@ -4,41 +4,17 @@ import asyncio
 from typing import Any
 
 
-class FanOutSource:
-    """Generic fan-out source with shared state and channel/cid routing.
+class FanOutReader:
+    """Per-connection reader returned by ``FanOutSource.subscribe()``.
 
-    Provides subscriber management, a per-instance bounded queue, shared
-    item storage partitioned by channel, and the broadcast fan-out.
-
-    Each subclass gets its own class-level ``_subscribers`` and ``_items``
-    dicts via ``__init_subclass__``.
-
-    Callers use ``push_op`` to store/remove items and broadcast op dicts
-    in a single call::
-
-        APIMarkerSource.push_op(
-            {"op": "add", "id": "m1", ...},
-            channel="dmap",
-            item=DMarker(id="m1", ...),
-        )
+    Provides ``next_update()`` to drain the instance queue and an ``items``
+    property for the current shared state of the channel.
     """
 
-    # channel → {cid → queue}
-    _subscribers: dict[str, dict[str, asyncio.Queue]]
-    # channel → {item_id → item}
-    _items: dict[str, dict[str, Any]]
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._subscribers = {}
-        cls._items = {}
-
-    def __init__(self, *, channel: str, cid: str) -> None:
+    def __init__(self, source: FanOutSource, channel: str) -> None:
+        self._source = source
         self._channel = channel
-        self._cid = cid
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        subs = type(self)._subscribers.setdefault(channel, {})
-        subs[cid] = self._queue
 
     def next_update(self) -> dict:
         try:
@@ -46,19 +22,56 @@ class FanOutSource:
         except asyncio.QueueEmpty:
             return {"op": "noop"}
 
-    def _items_list(self) -> list:
-        """Return the current items for this instance's channel."""
-        return list(type(self)._items.get(self._channel, {}).values())
+    @property
+    def items(self) -> list:
+        """Current items for this reader's channel."""
+        return list(self._source._items.get(self._channel, {}).values())
 
-    @classmethod
-    def _channel_items(cls, channel: str) -> dict[str, Any]:
-        return cls._items.get(channel, {})
 
-    # -- Public API --
+class FanOutSource:
+    """Generic fan-out source with shared state and channel/cid routing.
 
-    @classmethod
+    Create one instance per data type (markers, polylines, list items).
+    Each instance has its own subscriber registry and item storage.
+
+    Usage::
+
+        # Module level — one per data type:
+        marker_source = FanOutSource()
+        polyline_source = FanOutSource()
+
+        # Driver subscribes to get a reader:
+        reader = marker_source.subscribe(channel="dmap", cid="1")
+        initial = reader.items        # shared state snapshot
+        update = reader.next_update() # drain per-connection queue
+
+        # API layer pushes ops:
+        marker_source.push_op({"op": "add", "id": "m1", ...}, channel="dmap", item=marker)
+    """
+
+    def __init__(self) -> None:
+        # channel → {cid → queue}
+        self._subscribers: dict[str, dict[str, asyncio.Queue]] = {}
+        # channel → {item_id → item}
+        self._items: dict[str, dict[str, Any]] = {}
+
+    def subscribe(self, channel: str, cid: str) -> FanOutReader:
+        """Create a reader for the given channel and cid."""
+        reader = FanOutReader(self, channel)
+        self._subscribers.setdefault(channel, {})[cid] = reader._queue
+        return reader
+
+    def unsubscribe(self, channel: str, cid: str) -> None:
+        subs = self._subscribers.get(channel)
+        if subs:
+            subs.pop(cid, None)
+
+    def channel_items(self, channel: str) -> dict[str, Any]:
+        """Return the raw item dict for a channel (used by list/query APIs)."""
+        return self._items.get(channel, {})
+
     def push_op(
-        cls, op: dict, *, channel: str, cid: str = "*", item: Any = None,
+        self, op: dict, *, channel: str, cid: str = "*", item: Any = None,
     ) -> None:
         """Store/remove an item and broadcast the op dict.
 
@@ -69,20 +82,17 @@ class FanOutSource:
         match op.get("op"):
             case "add" | "update":
                 if item is not None:
-                    cls._items.setdefault(channel, {})[op["id"]] = item
+                    self._items.setdefault(channel, {})[op["id"]] = item
             case "delete":
-                cls._items.get(channel, {}).pop(op.get("id", ""), None)
+                self._items.get(channel, {}).pop(op.get("id", ""), None)
             case "clear":
-                cls._items.pop(channel, None)
+                self._items.pop(channel, None)
 
-        cls._broadcast(op, channel=channel, cid=cid)
+        self._broadcast(op, channel=channel, cid=cid)
 
-    # -- Fan-out --
-
-    @classmethod
-    def _broadcast(cls, op: dict, *, channel: str, cid: str = "*") -> None:
+    def _broadcast(self, op: dict, *, channel: str, cid: str = "*") -> None:
         """Fan out an op dict to subscribers of the given channel."""
-        subs = cls._subscribers.get(channel)
+        subs = self._subscribers.get(channel)
         if not subs:
             return
 

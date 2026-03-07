@@ -42,8 +42,12 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
     _channel: str = "dmap"
 
     @classmethod
-    def with_source(cls, source_class: type, *, channel: str = "dmap", tick_interval: float = 1.2, **source_kwargs):
-        """Return a configured DynamicMapLiveView class bound to source_class."""
+    def with_source(cls, source_class: type | None = None, *, channel: str = "dmap", tick_interval: float = 1.2, **source_kwargs):
+        """Return a configured DynamicMapLiveView class bound to source_class.
+
+        If source_class is None (default), MapDriver uses the module-level
+        marker_source fan-out instance.
+        """
         return type(
             "DynamicMapLiveView",
             (cls,),
@@ -56,11 +60,6 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
         )
 
     async def mount(self, socket: LiveViewSocket[DynamicMapPageContext], session):
-        if self.source_class is None:
-            raise RuntimeError(
-                "DynamicMapLiveView has no source_class. "
-                "Use DynamicMapLiveView.with_source(MySource) when registering the route."
-            )
         self._map = MapDriver(self._channel, source_class=self.source_class, source_kwargs=self._source_kwargs or None)
         socket.context = DynamicMapPageContext()
         if socket.connected:

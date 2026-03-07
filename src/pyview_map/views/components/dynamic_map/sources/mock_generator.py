@@ -67,7 +67,7 @@ class MockGenerator:
     # ------------------------------------------------------------------
 
     @property
-    def markers(self) -> list[DMarker]:
+    def items(self) -> list[DMarker]:
         return list(self._markers.values())
 
     def next_update(self) -> dict:

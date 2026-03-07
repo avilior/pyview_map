@@ -2,7 +2,7 @@ import asyncio
 
 from pyview.template.live_view_template import live_component
 
-from .sources.api_list_source import APIListSource
+from .sources.api_list_source import list_source
 from .sources.list_command_queue import ListCommandQueue
 from .dynamic_list import DynamicListComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
@@ -43,8 +43,8 @@ class ListDriver:
     def __init__(self, channel: str):
         self._channel = channel
         self._cid = next_cid()
-        self._list_source = APIListSource(channel=channel, cid=self._cid)
-        self._initial_items = self._list_source.items
+        self._list_reader = list_source.subscribe(channel, self._cid)
+        self._initial_items = self._list_reader.items
         self._list_ops: list[dict] = []
         self._ops_version: int = 0
         self._cmd_queue: asyncio.Queue | None = None
@@ -63,7 +63,7 @@ class ListDriver:
         # Drain list updates
         list_ops: list[dict] = []
         while True:
-            update = self._list_source.next_update()
+            update = self._list_reader.next_update()
             if update["op"] == "noop":
                 break
             list_ops.append(update)

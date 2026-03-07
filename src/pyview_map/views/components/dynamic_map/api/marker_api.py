@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
-from pyview_map.views.components.dynamic_map.sources.api_marker_source import APIMarkerSource
-from pyview_map.views.components.dynamic_map.sources.api_polyline_source import APIPolylineSource
+from pyview_map.views.components.dynamic_map.sources.api_marker_source import marker_source
+from pyview_map.views.components.dynamic_map.sources.api_polyline_source import polyline_source
 from pyview_map.views.components.dynamic_map.sources.command_queue import CommandQueue
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
@@ -44,7 +44,7 @@ def markers_add(
         op["heading"] = heading
     if speed is not None:
         op["speed"] = speed
-    APIMarkerSource.push_op(op, channel=channel, cid=cid, item=marker)
+    marker_source.push_op(op, channel=channel, cid=cid, item=marker)
     EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
     return {"ok": True}
 
@@ -62,21 +62,21 @@ def markers_update(
         op["heading"] = heading
     if speed is not None:
         op["speed"] = speed
-    APIMarkerSource.push_op(op, channel=channel, cid=cid, item=marker)
+    marker_source.push_op(op, channel=channel, cid=cid, item=marker)
     EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.delete")
 def markers_delete(id: str, channel: str, cid: str = "*") -> dict:
-    APIMarkerSource.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
+    marker_source.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
     EventBroadcaster.broadcast(MarkerOpEvent(op="delete", id=id, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("markers.list")
 def markers_list(channel: str) -> dict:
-    return {"markers": [m.to_dict() for m in APIMarkerSource._channel_items(channel).values()]}
+    return {"markers": [m.to_dict() for m in marker_source.channel_items(channel).values()]}
 
 
 @jrpc_service.request("map.events.subscribe")
@@ -165,7 +165,7 @@ def polylines_add(
     op: dict = {"op": "add", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
     if dashArray is not None:
         op["dashArray"] = dashArray
-    APIPolylineSource.push_op(op, channel=channel, cid=cid, item=polyline)
+    polyline_source.push_op(op, channel=channel, cid=cid, item=polyline)
     EventBroadcaster.broadcast(PolylineOpEvent(op="add", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
     return {"ok": True}
 
@@ -181,21 +181,21 @@ def polylines_update(
     op: dict = {"op": "update", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
     if dashArray is not None:
         op["dashArray"] = dashArray
-    APIPolylineSource.push_op(op, channel=channel, cid=cid, item=polyline)
+    polyline_source.push_op(op, channel=channel, cid=cid, item=polyline)
     EventBroadcaster.broadcast(PolylineOpEvent(op="update", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.delete")
 def polylines_delete(id: str, channel: str, cid: str = "*") -> dict:
-    APIPolylineSource.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
+    polyline_source.push_op({"op": "delete", "id": id}, channel=channel, cid=cid)
     EventBroadcaster.broadcast(PolylineOpEvent(op="delete", id=id, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.list")
 def polylines_list(channel: str) -> dict:
-    return {"polylines": [p.to_dict() for p in APIPolylineSource._channel_items(channel).values()]}
+    return {"polylines": [p.to_dict() for p in polyline_source.channel_items(channel).values()]}
 
 
 # -- FastAPI sub-app mounted at /api in __main__.py -----------------------

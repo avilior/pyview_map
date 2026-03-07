@@ -2,8 +2,8 @@ import asyncio
 
 from pyview.template.live_view_template import live_component
 
-from .sources.api_marker_source import APIMarkerSource, MarkerSource
-from .sources.api_polyline_source import APIPolylineSource
+from .sources.api_marker_source import marker_source, MarkerSource
+from .sources.api_polyline_source import polyline_source
 from .sources.command_queue import CommandQueue
 from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
@@ -25,14 +25,14 @@ class MapDriver:
     events so external clients can identify and target specific connections.
 
     Source routing:
-      - Default (no source_class): uses APIMarkerSource with the driver's channel and cid.
+      - Default (no source_class): subscribes to the module-level marker_source.
       - Explicit source_class: uses the given class with source_kwargs as-is.
         The marker source may not need channel/cid (e.g. MockGenerator).
         Polyline source and command queue always use the driver's channel and cid.
 
     Usage::
 
-        # Simple — default APIMarkerSource with channel routing:
+        # Simple — default marker_source with channel routing:
         self._map = MapDriver("my-map")
 
         # Custom source class (e.g. MockGenerator):
@@ -48,17 +48,14 @@ class MapDriver:
             kwargs = dict(source_kwargs) if source_kwargs else {}
             self._source: MarkerSource = source_class(**kwargs)
         else:
-            # Default: APIMarkerSource with channel and cid routing
-            kwargs = dict(source_kwargs) if source_kwargs else {}
-            kwargs.setdefault("channel", channel)
-            kwargs.setdefault("cid", self._cid)
-            self._source = APIMarkerSource(**kwargs)
+            # Default: subscribe to the module-level marker_source
+            self._source = marker_source.subscribe(channel, self._cid)
 
         # Polyline source and command queue always use the driver's channel and cid
-        self._polyline_source = APIPolylineSource(channel=channel, cid=self._cid)
+        self._polyline_reader = polyline_source.subscribe(channel, self._cid)
 
-        self._initial_markers = self._source.markers
-        self._initial_polylines = self._polyline_source.polylines
+        self._initial_markers = self._source.items
+        self._initial_polylines = self._polyline_reader.items
         self._icon_registry_json = icon_registry.to_json()
         self._marker_ops: list[dict] = []
         self._polyline_ops: list[dict] = []
@@ -87,7 +84,7 @@ class MapDriver:
         # Drain polyline updates
         polyline_ops: list[dict] = []
         while True:
-            pl_update = self._polyline_source.next_update()
+            pl_update = self._polyline_reader.next_update()
             if pl_update["op"] == "noop":
                 break
             polyline_ops.append(pl_update)
