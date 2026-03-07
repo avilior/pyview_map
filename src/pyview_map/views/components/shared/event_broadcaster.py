@@ -1,8 +1,11 @@
 import asyncio
+from typing import Protocol
 
 from jrpc_common.jrpc_model import JSONRPCNotification
 
-from .map_events import BroadcastEvent
+
+class Broadcastable(Protocol):
+    def to_dict(self) -> dict: ...
 
 
 class EventBroadcaster:
@@ -25,7 +28,7 @@ class EventBroadcaster:
         cls._subscribers.discard(q)
 
     @classmethod
-    def broadcast(cls, event: BroadcastEvent) -> None:
+    def broadcast(cls, event: Broadcastable) -> None:
         dead: list[asyncio.Queue] = []
         notification = JSONRPCNotification(
             method="notifications/map.event",

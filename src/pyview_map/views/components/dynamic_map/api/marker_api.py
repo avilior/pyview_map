@@ -5,12 +5,12 @@ from fastapi import FastAPI
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
-from .api_marker_source import APIMarkerSource
-from .api_polyline_source import APIPolylineSource
-from .command_queue import CommandQueue
-from .event_broadcaster import EventBroadcaster
-from .latlng import LatLng
-from .map_events import (
+from pyview_map.views.components.dynamic_map.sources.api_marker_source import APIMarkerSource
+from pyview_map.views.components.dynamic_map.sources.api_polyline_source import APIPolylineSource
+from pyview_map.views.components.dynamic_map.sources.command_queue import CommandQueue
+from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
+from pyview_map.views.components.shared.latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.map_events import (
     FitBoundsCmd,
     FlyToBoundsCmd,
     FlyToCmd,

@@ -6,9 +6,9 @@ import uvicorn
 from pyview_map.views.park_map_demo.park_map_demo import MapLiveView
 from pyview_map.views.dynamic_map_demo import DynamicMapLiveView
 from pyview_map.views.multimaps_demo import MultiMapLiveView
-from pyview_map.views.components.dynamic_map.marker_api import api_app
-from pyview_map.views.components.dynamic_map.api_marker_source import APIMarkerSource
-import pyview_map.views.components.dynamic_list.list_api  # noqa: F401 — registers JRPC methods
+from pyview_map.views.components.dynamic_map.api.marker_api import api_app
+from pyview_map.views.components.dynamic_map.sources.api_marker_source import APIMarkerSource
+import pyview_map.views.components.dynamic_list.api.list_api  # noqa: F401 — registers JRPC methods
 from pyview_map.views.map_list_demo import DemoLiveView
 from pyview_map.app import app
 

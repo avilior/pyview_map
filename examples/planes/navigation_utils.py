@@ -1,7 +1,7 @@
 import math
 from datetime import datetime, timedelta
 from typing import Iterator, Tuple
-from pyview_map.views.components.dynamic_map.latlng import LatLng
+from pyview_map.views.components.shared.latlng import LatLng
 
 EARTH_RADIUS_NM = 3440.065  # nautical miles
 

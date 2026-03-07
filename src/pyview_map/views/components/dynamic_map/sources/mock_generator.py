@@ -2,9 +2,9 @@ import math
 import random
 import uuid
 
-from .dmarker import DMarker
-from .icon_registry import icon_registry
-from .latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
+from pyview_map.views.components.dynamic_map.icon_registry import icon_registry
+from pyview_map.views.components.shared.latlng import LatLng
 
 
 _CALLSIGNS = [

@@ -1,6 +1,6 @@
 import asyncio
 
-from .dlist_item import DListItem
+from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
 
 
 class APIListSource:

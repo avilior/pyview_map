@@ -13,7 +13,7 @@ import uuid
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
-from pyview_map.views.components.dynamic_map.map_events import (
+from pyview_map.views.components.dynamic_map.models.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
 )
 

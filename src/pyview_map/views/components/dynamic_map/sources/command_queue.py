@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .map_events import MapCommand
+from pyview_map.views.components.dynamic_map.models.map_events import MapCommand
 
 
 class CommandQueue:

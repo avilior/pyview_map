@@ -8,9 +8,9 @@ from pyview.components.base import ComponentMeta, ComponentSocket
 from pyview.stream import Stream
 from pyview.template.live_view_template import stream_for
 
-from .dmarker import DMarker
-from .dpolyline import DPolyline
-from .latlng import LatLng
+from .models.dmarker import DMarker
+from .models.dpolyline import DPolyline
+from pyview_map.views.components.shared.latlng import LatLng
 
 
 # ---------------------------------------------------------------------------

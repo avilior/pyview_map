@@ -29,12 +29,12 @@ from jrpc_common.jrpc_model import (
     JSONRPCErrorResponse,
 )
 
-from pyview_map.views.components.dynamic_map.map_events import (
+from pyview_map.views.components.dynamic_map.models.map_events import (
     MapEvent,
     MarkerOpEvent,
     parse_event,
 )
-from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
+from pyview_map.views.components.dynamic_list.models.list_events import ListItemClickEvent
 
 BASE_URL = "http://localhost:8123/api"
 AUTH_TOKEN = "tok-acme-001"

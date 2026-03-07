@@ -1,5 +1,4 @@
-import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
@@ -9,13 +8,11 @@ from pyview.events import InfoEvent
 from pyview.meta import PyViewMeta
 from pyview.stream import Stream
 from pyview.template import TemplateView
-from pyview.template.live_view_template import live_component, stream_for
+from pyview.template.live_view_template import stream_for
 
-from .api_list_source import APIListSource
-from .dlist_item import DListItem
-from pyview_map.views.components.dynamic_map.event_broadcaster import EventBroadcaster
-from .list_command_queue import ListCommandQueue
-from .list_events import ListItemClickEvent
+from .models.dlist_item import DListItem
+from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
+from .models.list_events import ListItemClickEvent
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +105,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
 
 @dataclass
 class DynamicListPageContext:
-    initial_items: list[DListItem] = field(default_factory=list)
-    list_ops: list[dict] = field(default_factory=list)
-    ops_version: int = 0
+    pass
 
 
 class DynamicListLiveView(TemplateView, LiveView[DynamicListPageContext]):
@@ -124,49 +119,23 @@ class DynamicListLiveView(TemplateView, LiveView[DynamicListPageContext]):
     tick_interval: float = 1.2
 
     async def mount(self, socket: LiveViewSocket[DynamicListPageContext], session):
-        self._list_source = APIListSource()
-        socket.context = DynamicListPageContext(
-            initial_items=self._list_source.items,
-        )
+        from .list_driver import ListDriver
+        self._list = ListDriver("dlist")
+        socket.context = DynamicListPageContext()
         if socket.connected:
-            self._cmd_queue = ListCommandQueue.subscribe()
+            self._list.connect()
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicListPageContext]):
         if event.name != "tick":
             return
-
-        # Drain all pending list updates
-        list_ops: list[dict] = []
-        while True:
-            update = self._list_source.next_update()
-            if update["op"] == "noop":
-                break
-            list_ops.append(update)
-
-        # Drain pending list commands
-        while True:
-            try:
-                cmd = self._cmd_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            event_name, payload = cmd.to_push_event(target="dlist")
-            await socket.push_event(event_name, payload)
-
-        socket.context.list_ops = list_ops
-        if list_ops:
-            socket.context.ops_version += 1
+        await self._list.tick(socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicListPageContext]):
-        socket.context.list_ops = []
+        self._list.clear_ops()
 
     def template(self, assigns: DynamicListPageContext, meta: PyViewMeta):
-        comp = live_component(DynamicListComponent, id="dlist",
-            initial_items=assigns.initial_items,
-            list_ops=assigns.list_ops,
-            ops_version=assigns.ops_version,
-            component_id="dlist",
-        )
+        comp = self._list.render()
 
         return t"""<div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">

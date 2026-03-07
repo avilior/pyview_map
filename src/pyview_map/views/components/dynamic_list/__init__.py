@@ -1,4 +1,4 @@
-from .dlist_item import DListItem
+from .models.dlist_item import DListItem
 
 __all__ = ["DListItem"]
 
@@ -10,4 +10,7 @@ def __getattr__(name):
     if name == "DynamicListLiveView":
         from .dynamic_list import DynamicListLiveView
         return DynamicListLiveView
+    if name == "ListDriver":
+        from .list_driver import ListDriver
+        return ListDriver
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,7 +1,7 @@
 import asyncio
 
-from .dmarker import DMarker
-from .latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
+from pyview_map.views.components.shared.latlng import LatLng
 from typing import Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------

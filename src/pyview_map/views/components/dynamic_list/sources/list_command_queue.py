@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .list_events import ListCommand
+from pyview_map.views.components.dynamic_list.models.list_events import ListCommand
 
 
 class ListCommandQueue:

@@ -21,9 +21,9 @@ from jrpc_common.jrpc_model import (
 )
 
 from pyview_map.views.components.dynamic_map import DPolyline
-from pyview_map.views.components.dynamic_map.dmarker import DMarker
-from pyview_map.views.components.dynamic_map.latlng import LatLng
-from pyview_map.views.components.dynamic_map.map_events import (
+from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
+from pyview_map.views.components.shared.latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
 )
 from navigation_utils import great_circle_flight_generator, bearing_deg, great_circle_position_at_time

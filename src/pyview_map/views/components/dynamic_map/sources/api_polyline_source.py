@@ -1,7 +1,7 @@
 import asyncio
 
-from .dpolyline import DPolyline
-from .latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.dpolyline import DPolyline
+from pyview_map.views.components.shared.latlng import LatLng
 
 
 class APIPolylineSource:

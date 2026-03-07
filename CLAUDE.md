@@ -27,31 +27,40 @@ src/pyview_map/
 ├── app.py               # PyView app, StaticFiles mount, root template (Tailwind + Leaflet CDN)
 └── views/
     ├── components/      # Reusable LiveComponents
+    │   ├── shared/                  # Cross-component utilities
+    │   │   ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
+    │   │   └── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
     │   ├── dynamic_map/             # Real-time streaming Leaflet map component
     │   │   ├── dynamic_map_component.py  # DynamicMapComponent (LiveComponent) + MarkerSource protocol
+    │   │   ├── map_driver.py          # MapDriver — encapsulates parent-side plumbing for hosting a map
     │   │   ├── dynamic_map.css
-    │   │   ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
-    │   │   ├── dmarker.py            # DMarker dataclass (uses LatLng)
-    │   │   ├── dpolyline.py          # DPolyline dataclass (uses LatLng)
-    │   │   ├── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
-    │   │   ├── api_marker_source.py  # APIMarkerSource — fan-out queues with component_id routing
-    │   │   ├── api_polyline_source.py # APIPolylineSource — same fan-out + component_id routing
-    │   │   ├── marker_api.py         # FastAPI sub-app — JRPCService methods + mcp_router at /api/mcp
-    │   │   ├── map_events.py         # Typed event/command dataclasses + parse_event()
-    │   │   ├── command_queue.py      # CommandQueue — fan-out queue for map commands
-    │   │   ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
     │   │   ├── icon_registry.py      # DivIcon registry (icons.json → JSON for JS)
+    │   │   ├── models/               # Data types + events + commands
+    │   │   │   ├── dmarker.py         # DMarker dataclass (uses LatLng)
+    │   │   │   ├── dpolyline.py       # DPolyline dataclass (uses LatLng)
+    │   │   │   └── map_events.py      # Typed event/command dataclasses + parse_event()
+    │   │   ├── sources/              # Data providers + fan-out queues
+    │   │   │   ├── api_marker_source.py  # APIMarkerSource — fan-out queues with component_id routing
+    │   │   │   ├── api_polyline_source.py # APIPolylineSource — same fan-out + component_id routing
+    │   │   │   ├── command_queue.py      # CommandQueue — fan-out queue for map commands
+    │   │   │   └── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
+    │   │   ├── api/                  # JRPC methods + FastAPI sub-app
+    │   │   │   └── marker_api.py      # JRPCService methods + mcp_router at /api/mcp
     │   │   └── static/
     │   │       ├── dynamic_map.js    # MapInstance class + Hooks: DynamicMap, DMarkItem, DPolylineItem
     │   │       └── icons.json        # Named DivIcon definitions
     │   └── dynamic_list/            # API-controlled scrollable list component
     │       ├── dynamic_list.py       # DynamicListComponent (LiveComponent), DynamicListLiveView
+    │       ├── list_driver.py       # ListDriver — encapsulates parent-side plumbing for hosting a list
     │       ├── dynamic_list.css      # Highlight animation
-    │       ├── dlist_item.py         # DListItem dataclass
-    │       ├── api_list_source.py    # APIListSource — fan-out source for list items
-    │       ├── list_command_queue.py  # ListCommandQueue — fan-out queue for list commands
-    │       ├── list_events.py        # ListItemOpEvent, ListItemClickEvent, HighlightListItemCmd
-    │       ├── list_api.py           # JRPC methods registered on global jrpc_service
+    │       ├── models/               # Data types + events
+    │       │   ├── dlist_item.py      # DListItem dataclass
+    │       │   └── list_events.py     # ListItemOpEvent, ListItemClickEvent, HighlightListItemCmd
+    │       ├── sources/              # Data providers + fan-out queues
+    │       │   ├── api_list_source.py  # APIListSource — fan-out source for list items
+    │       │   └── list_command_queue.py # ListCommandQueue — fan-out queue for list commands
+    │       ├── api/                  # JRPC methods
+    │       │   └── list_api.py        # JRPC methods registered on global jrpc_service
     │       └── static/
     │           └── dynamic_list.js   # Hook: DynamicList (highlight scroll/flash)
     ├── park_map_demo/       # /map — National Parks Leaflet map
@@ -177,31 +186,41 @@ to JS without modifying the DOM (e.g. `highlight-park` in the `/map` view).
 
 ## Dynamic map architecture
 
-The dynamic map uses a **LiveComponent** architecture:
+The dynamic map uses a **LiveComponent** + **Driver** architecture:
 
 ```
 DynamicMapLiveView (TemplateView + LiveView)
+├── owns MapDriver (encapsulates all plumbing)
 ├── owns schedule_info("tick") — drives all updates
-├── owns marker source, polyline source, command queue
-├── template() returns t-string with live_component() call
+├── mount: creates MapDriver, calls driver.connect()
+├── handle_info("tick"): calls driver.tick(socket)
+├── handle_event: calls driver.clear_ops() + driver.handle_event()
+├── template: calls driver.render() to get live_component()
 │
-└── DynamicMapComponent (LiveComponent)
-    ├── owns Stream[DMarker], Stream[DPolyline]
-    ├── update() receives pending ops from parent → mutates streams
-    ├── template() returns t-string with stream_for() for markers/polylines
-    └── handle_event() handles marker-event, polyline-event, map-event
+└── MapDriver
+    ├── owns marker source, polyline source, command queue
+    ├── tick(): drains sources + commands, updates internal ops/version
+    ├── handle_event(): parses events, broadcasts, returns summary
+    ├── render(): returns live_component(DynamicMapComponent, ...)
+    │
+    └── DynamicMapComponent (LiveComponent)
+        ├── owns Stream[DMarker], Stream[DPolyline]
+        ├── update() receives pending ops from driver → mutates streams
+        ├── template() returns t-string with stream_for() for markers/polylines
+        └── handle_event() handles marker-event, polyline-event, map-event
 ```
 
-`MultiMapLiveView` hosts N independent `DynamicMapComponent` instances, each
-with its own source/queue keyed by `component_id`.
+`MultiMapLiveView` hosts N `MapDriver` instances, one per `component_id`.
+`DemoLiveView` hosts a `MapDriver` + `ListDriver` side by side.
 
 ### Data flow
 
-1. Parent `handle_info("tick")` drains marker source, polyline source, command queue
-2. Stores ops as lists of dicts in context + increments `ops_version`
-3. Parent re-renders → `live_component()` passes ops as assigns
-4. Component `update()` receives ops, applies them to its own Streams (gated by version counter to prevent duplicate application)
-5. Component re-renders with updated stream diffs
+1. Parent `handle_info("tick")` calls `driver.tick(socket)`
+2. Driver drains marker source, polyline source, command queue internally
+3. Driver pushes commands via `socket.push_event()`, updates internal ops/version
+4. Parent re-renders → `driver.render()` calls `live_component()` with current state
+5. Component `update()` receives ops, applies them to its own Streams (gated by version counter)
+6. Component re-renders with updated stream diffs
 
 ### DynamicMapComponent
 
@@ -226,7 +245,7 @@ Implement the `MarkerSource` protocol and register with `with_source()`:
 
 ```python
 from pyview_map.views.components.dynamic_map.dynamic_map_component import DMarker, MarkerSource
-from pyview_map.views.components.dynamic_map.latlng import LatLng
+from pyview_map.views.components.shared.latlng import LatLng
 
 
 class MySource:  # no need to inherit — duck typing
@@ -264,32 +283,96 @@ app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
 it receives operations from the JSON-RPC API and fans them out to all connected
 LiveView instances via per-instance subscriber queues.
 
+### MapDriver and ListDriver
+
+`MapDriver` and `ListDriver` encapsulate all parent-side plumbing for hosting
+components. Page developers only interact with 5 methods:
+
+```python
+from pyview_map.views.components.dynamic_map import MapDriver
+from pyview_map.views.components.dynamic_list import ListDriver
+
+@dataclass
+class MyPageContext:
+    last_event: str = ""
+
+class MyPageView(TemplateView, LiveView[MyPageContext]):
+    async def mount(self, socket, session):
+        self._map = MapDriver("my-map")
+        self._list = ListDriver("my-list")
+        socket.context = MyPageContext()
+        if socket.connected:
+            self._map.connect()
+            self._list.connect()
+            socket.schedule_info(InfoEvent("tick"), seconds=1.2)
+
+    async def handle_info(self, event, socket):
+        if event.name == "tick":
+            await self._map.tick(socket)
+            await self._list.tick(socket)
+
+    async def handle_event(self, event, payload, socket):
+        self._map.clear_ops()
+        self._list.clear_ops()
+        summary = self._map.handle_event(event, payload) or self._list.handle_event(event, payload)
+        if summary:
+            socket.context.last_event = summary
+
+    def template(self, assigns, meta):
+        return t'<div>{self._map.render()}{self._list.render()}</div>'
+```
+
+**MapDriver source routing:**
+- Default (no `source_class`): uses `APIMarkerSource` with `component_id` routing
+  — subscribes to ops targeted at the driver's `component_id`.
+- Explicit `source_class`: uses the given class with `source_kwargs` as-is.
+  If `source_kwargs` includes `component_id`, that value is used for routing;
+  otherwise routing defaults to `None` (receives all ops).
+
+```python
+# Default — APIMarkerSource with auto component_id routing:
+MapDriver("my-map")
+
+# Custom source (e.g. MockGenerator):
+MapDriver("dmap", source_class=MockGenerator, source_kwargs={"initial_count": 10})
+
+# Explicit APIMarkerSource with no routing (backward compat, receives all ops):
+MapDriver("dmap", source_class=APIMarkerSource)
+```
+
 ### MultiMapLiveView
 
 `MultiMapLiveView.with_maps(["left", "right"])` creates a page with N independent
-map instances. Each map gets its own `APIMarkerSource`, `APIPolylineSource`, and
-`CommandQueue` subscriber keyed by `component_id`. External clients target a specific
-map via the `component_id` parameter on any API method (see below).
+`MapDriver` instances. Each driver auto-subscribes using its `component_id` for routing.
+External clients target a specific map via the `component_id` parameter on any API method.
 
 ## Dynamic list architecture
 
-The dynamic list follows the same **LiveComponent** pattern as the map:
+The dynamic list follows the same **LiveComponent + Driver** pattern as the map:
 
 ```
 DynamicListLiveView (TemplateView + LiveView)
+├── owns ListDriver (encapsulates all plumbing)
 ├── owns schedule_info("tick") — drives all updates
-├── owns list source, list command queue
-├── template() returns t-string with live_component() call
+├── mount: creates ListDriver, calls driver.connect()
+├── handle_info("tick"): calls driver.tick(socket)
+├── template: calls driver.render()
 │
-└── DynamicListComponent (LiveComponent)
-    ├── owns Stream[DListItem]
-    ├── update() receives pending ops from parent → mutates stream
-    ├── template() returns t-string with stream_for() for clickable items
-    └── handle_event("item-click") → broadcasts ListItemClickEvent
+└── ListDriver
+    ├── owns list source, list command queue
+    ├── tick(): drains source + commands
+    ├── handle_event(): parses item-click events, broadcasts
+    ├── render(): returns live_component(DynamicListComponent, ...)
+    │
+    └── DynamicListComponent (LiveComponent)
+        ├── owns Stream[DListItem]
+        ├── update() receives pending ops from driver → mutates stream
+        ├── template() returns t-string with stream_for() for clickable items
+        └── handle_event("item-click") → broadcasts ListItemClickEvent
 ```
 
-`DynamicListComponent` is reusable — `DemoLiveView` hosts it alongside a
-`DynamicMapComponent` on the `/map_list_demo` page.
+`DynamicListComponent` is reusable — `DemoLiveView` hosts it via `ListDriver`
+alongside a `MapDriver` on the `/map_list_demo` page.
 
 ## Dependencies
 
@@ -501,7 +584,7 @@ All lat/lng values use the `LatLng` dataclass (`latlng.py`) internally.
 Wire format (JSON-RPC params, JS payloads) remains `[lat, lng]` arrays.
 
 ```python
-from pyview_map.views.components.dynamic_map.latlng import LatLng
+from pyview_map.views.components.shared.latlng import LatLng
 
 ll = LatLng(39.5, -98.35)
 ll.to_list()  # → [39.5, -98.35]
@@ -562,12 +645,12 @@ Each has `to_dict()` for serialization; `parse_event()` reconstructs them
 from a notification params dict.
 
 ```python
-from pyview_map.views.components.dynamic_map.latlng import LatLng
-from pyview_map.views.components.dynamic_map.map_events import (
+from pyview_map.views.components.shared.latlng import LatLng
+from pyview_map.views.components.dynamic_map.models.map_events import (
     MarkerOpEvent, MarkerEvent, MapEvent, PolylineOpEvent, PolylineEvent,
     BroadcastEvent, parse_event,
 )
-from pyview_map.views.components.dynamic_list.list_events import ListItemOpEvent, ListItemClickEvent
+from pyview_map.views.components.dynamic_list.models.list_events import ListItemOpEvent, ListItemClickEvent
 ```
 
 **`MarkerOpEvent`** — marker CRUD from the API:
@@ -619,8 +702,8 @@ ListItemClickEvent(event="click", id="item1", label="Airport JFK")
 ### Client subscription example
 
 ```python
-from pyview_map.views.components.dynamic_map.map_events import MarkerOpEvent, MarkerEvent, MapEvent, parse_event
-from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
+from pyview_map.views.components.dynamic_map.models.map_events import MarkerOpEvent, MarkerEvent, MapEvent, parse_event
+from pyview_map.views.components.dynamic_list.models.list_events import ListItemClickEvent
 
 req = JSONRPCRequest(method="map.events.subscribe")
 async for msg in rpc.send_request(req):

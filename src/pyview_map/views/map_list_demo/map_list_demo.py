@@ -1,43 +1,16 @@
-import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
 from pyview.events import InfoEvent
 from pyview.meta import PyViewMeta
 from pyview.template import TemplateView
-from pyview.template.live_view_template import live_component
 
-from pyview_map.views.components.dynamic_map.api_marker_source import APIMarkerSource
-from pyview_map.views.components.dynamic_map.api_polyline_source import APIPolylineSource
-from pyview_map.views.components.dynamic_map.command_queue import CommandQueue
-from pyview_map.views.components.dynamic_map.dmarker import DMarker
-from pyview_map.views.components.dynamic_map.dpolyline import DPolyline
-from pyview_map.views.components.dynamic_map.dynamic_map_component import DynamicMapComponent
-from pyview_map.views.components.dynamic_map.event_broadcaster import EventBroadcaster
-from pyview_map.views.components.dynamic_map.icon_registry import icon_registry
-from pyview_map.views.components.dynamic_map.latlng import LatLng
-from pyview_map.views.components.dynamic_map.map_events import MapEvent, MarkerEvent, PolylineEvent
-from pyview_map.views.components.dynamic_list.api_list_source import APIListSource
-from pyview_map.views.components.dynamic_list.dlist_item import DListItem
-from pyview_map.views.components.dynamic_list.dynamic_list import DynamicListComponent
-from pyview_map.views.components.dynamic_list.list_command_queue import ListCommandQueue
-from pyview_map.views.components.dynamic_list.list_events import ListItemClickEvent
+from pyview_map.views.components.dynamic_map import MapDriver
+from pyview_map.views.components.dynamic_list import ListDriver
 
 
 @dataclass
 class DemoPageContext:
-    # Map component data
-    initial_markers: list[DMarker] = field(default_factory=list)
-    initial_polylines: list[DPolyline] = field(default_factory=list)
-    icon_registry_json: str = ""
-    marker_ops: list[dict] = field(default_factory=list)
-    polyline_ops: list[dict] = field(default_factory=list)
-    map_ops_version: int = 0
-    # List component data
-    initial_items: list[DListItem] = field(default_factory=list)
-    list_ops: list[dict] = field(default_factory=list)
-    list_ops_version: int = 0
-    # Event display
     last_event: str = ""
 
 
@@ -51,149 +24,31 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
     tick_interval: float = 1.2
 
     async def mount(self, socket: LiveViewSocket[DemoPageContext], session):
-        self._marker_source = APIMarkerSource(component_id="map_list_demo-map")
-        self._polyline_source = APIPolylineSource(component_id="map_list_demo-map")
-        self._list_source = APIListSource(component_id="map_list_demo-list")
-
-        socket.context = DemoPageContext(
-            initial_markers=self._marker_source.markers,
-            initial_polylines=self._polyline_source.polylines,
-            icon_registry_json=icon_registry.to_json(),
-            initial_items=self._list_source.items,
-        )
-
+        self._map = MapDriver("map_list_demo-map")
+        self._list = ListDriver("map_list_demo-list")
+        socket.context = DemoPageContext()
         if socket.connected:
-            self._map_cmd_queue = CommandQueue.subscribe(component_id="map_list_demo-map")
-            self._list_cmd_queue = ListCommandQueue.subscribe(component_id="map_list_demo-list")
+            self._map.connect()
+            self._list.connect()
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DemoPageContext]):
         if event.name != "tick":
             return
-
-        # Drain marker updates
-        marker_ops: list[dict] = []
-        while True:
-            update = self._marker_source.next_update()
-            if update["op"] == "noop":
-                break
-            marker_ops.append(update)
-
-        # Drain polyline updates
-        polyline_ops: list[dict] = []
-        while True:
-            pl_update = self._polyline_source.next_update()
-            if pl_update["op"] == "noop":
-                break
-            polyline_ops.append(pl_update)
-
-        # Drain map commands
-        while True:
-            try:
-                cmd = self._map_cmd_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            event_name, payload = cmd.to_push_event(target="map_list_demo-map")
-            await socket.push_event(event_name, payload)
-
-        # Drain list updates
-        list_ops: list[dict] = []
-        while True:
-            update = self._list_source.next_update()
-            if update["op"] == "noop":
-                break
-            list_ops.append(update)
-
-        # Drain list commands
-        while True:
-            try:
-                cmd = self._list_cmd_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            event_name, payload = cmd.to_push_event(target="map_list_demo-list")
-            await socket.push_event(event_name, payload)
-
-        # Update map context
-        socket.context.marker_ops = marker_ops
-        socket.context.polyline_ops = polyline_ops
-        if marker_ops or polyline_ops:
-            socket.context.map_ops_version += 1
-
-        # Update list context
-        socket.context.list_ops = list_ops
-        if list_ops:
-            socket.context.list_ops_version += 1
+        await self._map.tick(socket)
+        await self._list.tick(socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DemoPageContext]):
-        # Clear stale ops
-        socket.context.marker_ops = []
-        socket.context.polyline_ops = []
-        socket.context.list_ops = []
-
-        if event == "marker-event":
-            raw_ll = payload.get("latLng", [])
-            ll = LatLng.from_list(raw_ll) if raw_ll else LatLng(0, 0)
-            me = MarkerEvent(
-                event=payload.get("event", "?"),
-                id=payload.get("id", ""),
-                name=payload.get("name", payload.get("id", "?")),
-                latLng=ll,
-            )
-            socket.context.last_event = f"marker: {me.event} → {me.name}"
-            EventBroadcaster.broadcast(me)
-
-        elif event == "polyline-event":
-            raw_ll = payload.get("latLng", [])
-            ll = LatLng.from_list(raw_ll) if raw_ll else LatLng(0, 0)
-            pe = PolylineEvent(
-                event=payload.get("event", "?"),
-                id=payload.get("id", ""),
-                name=payload.get("name", payload.get("id", "?")),
-                latLng=ll,
-            )
-            socket.context.last_event = f"polyline: {pe.event} → {pe.name}"
-            EventBroadcaster.broadcast(pe)
-
-        elif event == "map-event":
-            raw_center = payload.get("center", [])
-            raw_ll = payload.get("latLng")
-            raw_bounds = payload.get("bounds")
-            me = MapEvent(
-                event=payload.get("event", "?"),
-                center=LatLng.from_list(raw_center) if raw_center else LatLng(0, 0),
-                zoom=payload.get("zoom", 0),
-                latLng=LatLng.from_list(raw_ll) if raw_ll else None,
-                bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
-            )
-            socket.context.last_event = f"map: {me.event} zoom={me.zoom}"
-            EventBroadcaster.broadcast(me)
-
-        elif event == "item-click":
-            item_id = payload.get("id", "")
-            label = payload.get("label", "")
-            evt = ListItemClickEvent(event="click", id=item_id, label=label)
-            socket.context.last_event = f"list: click → {label}"
-            EventBroadcaster.broadcast(evt)
+        self._map.clear_ops()
+        self._list.clear_ops()
+        summary = self._map.handle_event(event, payload) or self._list.handle_event(event, payload)
+        if summary:
+            socket.context.last_event = summary
 
     def template(self, assigns: DemoPageContext, meta: PyViewMeta):
         last_event = assigns.last_event
-
-        map_comp = live_component(DynamicMapComponent, id="map_list_demo-map",
-            initial_markers=assigns.initial_markers,
-            initial_polylines=assigns.initial_polylines,
-            icon_registry_json=assigns.icon_registry_json,
-            marker_ops=assigns.marker_ops,
-            polyline_ops=assigns.polyline_ops,
-            ops_version=assigns.map_ops_version,
-            component_id="map_list_demo-map",
-        )
-
-        list_comp = live_component(DynamicListComponent, id="map_list_demo-list",
-            initial_items=assigns.initial_items,
-            list_ops=assigns.list_ops,
-            ops_version=assigns.list_ops_version,
-            component_id="map_list_demo-list",
-        )
+        map_comp = self._map.render()
+        list_comp = self._list.render()
 
         event_line = t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>' if last_event else t'<div class="text-xs text-gray-400">No events yet</div>'
 
