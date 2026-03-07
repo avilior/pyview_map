@@ -33,32 +33,31 @@ class MarkerSource(Protocol):
 
 
 class APIMarkerSource:
-    """MarkerSource implementation with per-instance subscriber queues and component_id routing.
+    """MarkerSource implementation with per-instance subscriber queues and channel routing.
 
     Each LiveView connection creates its own instance, which gets a dedicated
     bounded queue. Push methods fan out operations to matching subscriber queues.
 
-    Subscribers are keyed by component_id:
-      - subscribe(component_id="fleet") → receives ops targeted at "fleet" AND broadcasts (component_id=None)
-      - subscribe(component_id=None) → receives ALL ops regardless of target component_id
+    Subscribers are keyed by channel — a required routing group identifier.
+    All instances subscribed to the same channel receive the same ops.
 
-    The shared _markers dict stays class-level so all instances see the same
-    current state on mount.
+    The shared _markers dict is partitioned by channel so initial state is isolated.
     """
 
-    # component_id → set of subscriber queues.  None key = "receive all" (broadcast subscribers).
-    _subscribers: dict[str | None, set[asyncio.Queue]] = {}
-    _markers: dict[str, DMarker] = {}
+    # channel → set of subscriber queues
+    _subscribers: dict[str, set[asyncio.Queue]] = {}
+    # channel → {marker_id → DMarker}
+    _markers: dict[str, dict[str, DMarker]] = {}
 
-    def __init__(self, *, component_id: str | None = None):
-        self._component_id = component_id
+    def __init__(self, *, channel: str):
+        self._channel = channel
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        subs = type(self)._subscribers.setdefault(component_id, set())
+        subs = type(self)._subscribers.setdefault(channel, set())
         subs.add(self._queue)
 
     @property
     def markers(self) -> list[DMarker]:
-        return list(self.__class__._markers.values())
+        return list(self.__class__._markers.get(self._channel, {}).values())
 
     def next_update(self) -> dict:
         try:
@@ -67,69 +66,58 @@ class APIMarkerSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict, *, component_id: str | None = None) -> None:
-        """Fan out an op to targeted subscribers and broadcast (None-key) subscribers."""
-        targets: list[set[asyncio.Queue]] = []
+    def _broadcast(cls, op: dict, *, channel: str) -> None:
+        """Fan out an op to all subscribers of the given channel."""
+        subs = cls._subscribers.get(channel)
+        if not subs:
+            return
 
-        # Always include broadcast subscribers (component_id=None key)
-        if None in cls._subscribers:
-            targets.append(cls._subscribers[None])
+        dead: list[asyncio.Queue] = []
+        for q in subs:
+            try:
+                q.put_nowait(op)
+            except asyncio.QueueFull:
+                dead.append(q)
 
-        # If a specific component_id was given, also include its subscribers
-        if component_id is not None and component_id in cls._subscribers:
-            targets.append(cls._subscribers[component_id])
-
-        dead: list[tuple[str | None, asyncio.Queue]] = []
-        seen: set[int] = set()  # avoid sending to the same queue twice
-
-        for target_set in targets:
-            for q in target_set:
-                qid = id(q)
-                if qid in seen:
-                    continue
-                seen.add(qid)
-                try:
-                    q.put_nowait(op)
-                except asyncio.QueueFull:
-                    dead.append((component_id, q))
-
-        for key, q in dead:
-            for s in cls._subscribers.values():
-                s.discard(q)
+        for q in dead:
+            subs.discard(q)
 
     @classmethod
     def push_add(
         cls, id: str, name: str, lat_lng: LatLng,
         icon: str = "default", heading: float | None = None, speed: float | None = None,
-        *, component_id: str | None = None,
+        *, channel: str,
     ) -> None:
-        cls._markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon, heading=heading, speed=speed)
+        channel_markers = cls._markers.setdefault(channel, {})
+        channel_markers[id] = DMarker(id=id, name=name, lat_lng=lat_lng, icon=icon, heading=heading, speed=speed)
         op: dict = {"op": "add", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon}
         if heading is not None:
             op["heading"] = heading
         if speed is not None:
             op["speed"] = speed
-        cls._broadcast(op, component_id=component_id)
+        cls._broadcast(op, channel=channel)
 
     @classmethod
     def push_update(
         cls, id: str, name: str, lat_lng: LatLng,
         icon: str = "default", heading: float | None = None, speed: float | None = None,
-        *, component_id: str | None = None,
+        *, channel: str,
     ) -> None:
-        if id in cls._markers:
-            cls._markers[id].lat_lng = lat_lng
-            cls._markers[id].icon = icon
-            cls._markers[id].heading = heading
-            cls._markers[id].speed = speed
+        channel_markers = cls._markers.get(channel, {})
+        if id in channel_markers:
+            channel_markers[id].lat_lng = lat_lng
+            channel_markers[id].icon = icon
+            channel_markers[id].heading = heading
+            channel_markers[id].speed = speed
         op: dict = {"op": "update", "id": id, "name": name, "latLng": lat_lng.to_list(), "icon": icon}
         if heading is not None:
             op["heading"] = heading
         if speed is not None:
             op["speed"] = speed
-        cls._broadcast(op, component_id=component_id)
+        cls._broadcast(op, channel=channel)
 
     @classmethod
-    def push_delete(cls, id: str, *, component_id: str | None = None) -> None:
-        cls._markers.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id}, component_id=component_id)
+    def push_delete(cls, id: str, *, channel: str) -> None:
+        channel_markers = cls._markers.get(channel, {})
+        channel_markers.pop(id, None)
+        cls._broadcast({"op": "delete", "id": id}, channel=channel)

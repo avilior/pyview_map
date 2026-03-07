@@ -5,32 +5,31 @@ from pyview_map.views.components.shared.latlng import LatLng
 
 
 class APIPolylineSource:
-    """Polyline fan-out source with component_id routing — structural clone of APIMarkerSource.
+    """Polyline fan-out source with channel routing — structural clone of APIMarkerSource.
 
     Each LiveView connection creates its own instance with a dedicated
     bounded queue. Push methods fan out operations to matching subscriber queues.
 
-    Subscribers are keyed by component_id:
-      - subscribe with component_id="fleet" → receives ops targeted at "fleet" AND broadcasts
-      - subscribe with component_id=None → receives ALL ops regardless of target component_id
+    Subscribers are keyed by channel — a required routing group identifier.
+    All instances subscribed to the same channel receive the same ops.
 
-    The shared _polylines dict stays class-level so all instances see the
-    same current state on mount.
+    The shared _polylines dict is partitioned by channel so initial state is isolated.
     """
 
-    # component_id → set of subscriber queues.  None key = "receive all" (broadcast subscribers).
-    _subscribers: dict[str | None, set[asyncio.Queue]] = {}
-    _polylines: dict[str, DPolyline] = {}
+    # channel → set of subscriber queues
+    _subscribers: dict[str, set[asyncio.Queue]] = {}
+    # channel → {polyline_id → DPolyline}
+    _polylines: dict[str, dict[str, DPolyline]] = {}
 
-    def __init__(self, *, component_id: str | None = None):
-        self._component_id = component_id
+    def __init__(self, *, channel: str):
+        self._channel = channel
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        subs = type(self)._subscribers.setdefault(component_id, set())
+        subs = type(self)._subscribers.setdefault(channel, set())
         subs.add(self._queue)
 
     @property
     def polylines(self) -> list[DPolyline]:
-        return list(self.__class__._polylines.values())
+        return list(self.__class__._polylines.get(self._channel, {}).values())
 
     def next_update(self) -> dict:
         try:
@@ -39,33 +38,21 @@ class APIPolylineSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict, *, component_id: str | None = None) -> None:
-        """Fan out an op to targeted subscribers and broadcast (None-key) subscribers."""
-        targets: list[set[asyncio.Queue]] = []
+    def _broadcast(cls, op: dict, *, channel: str) -> None:
+        """Fan out an op to all subscribers of the given channel."""
+        subs = cls._subscribers.get(channel)
+        if not subs:
+            return
 
-        if None in cls._subscribers:
-            targets.append(cls._subscribers[None])
+        dead: list[asyncio.Queue] = []
+        for q in subs:
+            try:
+                q.put_nowait(op)
+            except asyncio.QueueFull:
+                dead.append(q)
 
-        if component_id is not None and component_id in cls._subscribers:
-            targets.append(cls._subscribers[component_id])
-
-        dead: list[tuple[str | None, asyncio.Queue]] = []
-        seen: set[int] = set()
-
-        for target_set in targets:
-            for q in target_set:
-                qid = id(q)
-                if qid in seen:
-                    continue
-                seen.add(qid)
-                try:
-                    q.put_nowait(op)
-                except asyncio.QueueFull:
-                    dead.append((component_id, q))
-
-        for key, q in dead:
-            for s in cls._subscribers.values():
-                s.discard(q)
+        for q in dead:
+            subs.discard(q)
 
     @classmethod
     def push_add(
@@ -78,9 +65,10 @@ class APIPolylineSource:
         opacity: float = 1.0,
         dash_array: str | None = None,
         *,
-        component_id: str | None = None,
+        channel: str,
     ) -> None:
-        cls._polylines[id] = DPolyline(
+        channel_polylines = cls._polylines.setdefault(channel, {})
+        channel_polylines[id] = DPolyline(
             id=id, name=name, path=path,
             color=color, weight=weight, opacity=opacity, dash_array=dash_array,
         )
@@ -91,7 +79,7 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op, component_id=component_id)
+        cls._broadcast(op, channel=channel)
 
     @classmethod
     def push_update(
@@ -104,10 +92,11 @@ class APIPolylineSource:
         opacity: float = 1.0,
         dash_array: str | None = None,
         *,
-        component_id: str | None = None,
+        channel: str,
     ) -> None:
-        if id in cls._polylines:
-            p = cls._polylines[id]
+        channel_polylines = cls._polylines.get(channel, {})
+        if id in channel_polylines:
+            p = channel_polylines[id]
             p.path = path
             p.name = name
             p.color = color
@@ -121,9 +110,10 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op, component_id=component_id)
+        cls._broadcast(op, channel=channel)
 
     @classmethod
-    def push_delete(cls, id: str, *, component_id: str | None = None) -> None:
-        cls._polylines.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id}, component_id=component_id)
+    def push_delete(cls, id: str, *, channel: str) -> None:
+        channel_polylines = cls._polylines.get(channel, {})
+        channel_polylines.pop(id, None)
+        cls._broadcast({"op": "delete", "id": id}, channel=channel)

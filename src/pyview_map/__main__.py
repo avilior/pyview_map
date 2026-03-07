@@ -35,8 +35,8 @@ def main():
     print("Marker API available at     http://localhost:8123/api/mcp")
 
     app.add_live_view("/map", MapLiveView)
-    app.add_live_view("/dmap", DynamicMapLiveView.with_source(APIMarkerSource))
-    app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
+    app.add_live_view("/dmap", DynamicMapLiveView.with_source(APIMarkerSource, channel="dmap"))
+    app.add_live_view("/mmap", MultiMapLiveView.with_maps(channels=["left", "right"]))
     app.add_live_view("/map_list_demo", DemoLiveView)
     app.mount("/api", api_app)
 

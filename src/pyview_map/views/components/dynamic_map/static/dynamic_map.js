@@ -68,12 +68,12 @@ L.GridLayer.RepeatedMarkers.prototype._removeTile = function(key) {
 // MapInstance — per-map state container
 //
 // Each DynamicMap hook creates a MapInstance. DMarkItem / DPolylineItem hooks
-// find their instance via closest('[data-component-id]').
+// find their instance via closest('[data-channel]').
 // ---------------------------------------------------------------------------
 
 class MapInstance {
-  constructor(componentId) {
-    this.componentId = componentId;
+  constructor(channel) {
+    this.channel = channel;
     this.map = null;
     this.repeatedMarkers = null;
     this.markers = new Map();     // dom_id -> L.Marker
@@ -86,7 +86,7 @@ class MapInstance {
 
   getIconRegistry() {
     if (this.iconRegistry) return this.iconRegistry;
-    const el = document.getElementById(this.componentId);
+    const el = document.getElementById(this.channel);
     if (el && el.dataset.iconRegistry) {
       try { this.iconRegistry = JSON.parse(el.dataset.iconRegistry); } catch (_) { this.iconRegistry = {}; }
     } else {
@@ -125,13 +125,13 @@ function _makeIcon(instance, iconName, heading) {
 
 // ---------------------------------------------------------------------------
 // Find the MapInstance for a hook element by walking up to the nearest
-// [data-component-id] ancestor.
+// [data-channel] ancestor.
 // ---------------------------------------------------------------------------
 
 function _findInstance(el) {
-  const wrapper = el.closest("[data-component-id]");
+  const wrapper = el.closest("[data-channel]");
   if (!wrapper) return null;
-  return _instances.get(wrapper.dataset.componentId) || null;
+  return _instances.get(wrapper.dataset.channel) || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ window.Hooks.DynamicMap = {
     setInterval(() => terminator.setTime(new Date()), 60_000);
 
     // Wire all low-frequency map events
-    const cid = instance.componentId;
+    const channel = instance.channel;
     MAP_EVENTS.forEach((evtName) => {
       instance.map.on(evtName, (e) => {
         const center = instance.map.getCenter();
@@ -326,28 +326,28 @@ window.Hooks.DynamicMap = {
     });
 
     // -- Map command handlers from server push_event -------------------------
-    // Events are namespaced with component_id to prevent leaking between instances.
-    this.handleEvent(`${cid}:setView`, ({latLng, zoom}) => instance.map.setView(latLng, zoom));
-    this.handleEvent(`${cid}:panTo`, ({latLng}) => {
+    // Events are namespaced with channel to prevent leaking between instances.
+    this.handleEvent(`${channel}:setView`, ({latLng, zoom}) => instance.map.setView(latLng, zoom));
+    this.handleEvent(`${channel}:panTo`, ({latLng}) => {
       instance.map.setView(latLng, instance.map.getZoom(), {animate: false});
     });
-    this.handleEvent(`${cid}:followMarker`, ({id}) => {
-      instance.followMarkerId = id ? `${cid}-markers-${id}` : null;
+    this.handleEvent(`${channel}:followMarker`, ({id}) => {
+      instance.followMarkerId = id ? `${channel}-markers-${id}` : null;
     });
-    this.handleEvent(`${cid}:unfollowMarker`, () => {
+    this.handleEvent(`${channel}:unfollowMarker`, () => {
       instance.followMarkerId = null;
     });
-    this.handleEvent(`${cid}:flyTo`, ({latLng, zoom}) => instance.map.flyTo(latLng, zoom));
-    this.handleEvent(`${cid}:fitBounds`, ({corner1, corner2}) => instance.map.fitBounds([corner1, corner2]));
-    this.handleEvent(`${cid}:flyToBounds`, ({corner1, corner2}) => instance.map.flyToBounds([corner1, corner2]));
-    this.handleEvent(`${cid}:setZoom`, ({zoom}) => instance.map.setZoom(zoom));
-    this.handleEvent(`${cid}:resetView`, () => instance.map.setView([39.5, -98.35], 4));
-    this.handleEvent(`${cid}:highlightMarker`, ({id}) => {
-      const marker = instance.markers.get(`${cid}-markers-${id}`);
+    this.handleEvent(`${channel}:flyTo`, ({latLng, zoom}) => instance.map.flyTo(latLng, zoom));
+    this.handleEvent(`${channel}:fitBounds`, ({corner1, corner2}) => instance.map.fitBounds([corner1, corner2]));
+    this.handleEvent(`${channel}:flyToBounds`, ({corner1, corner2}) => instance.map.flyToBounds([corner1, corner2]));
+    this.handleEvent(`${channel}:setZoom`, ({zoom}) => instance.map.setZoom(zoom));
+    this.handleEvent(`${channel}:resetView`, () => instance.map.setView([39.5, -98.35], 4));
+    this.handleEvent(`${channel}:highlightMarker`, ({id}) => {
+      const marker = instance.markers.get(`${channel}-markers-${id}`);
       if (marker) { instance.map.panTo(marker.getLatLng()); }
     });
-    this.handleEvent(`${cid}:highlightPolyline`, ({id}) => {
-      const polyline = instance.polylines.get(`${cid}-polylines-${id}`);
+    this.handleEvent(`${channel}:highlightPolyline`, ({id}) => {
+      const polyline = instance.polylines.get(`${channel}-polylines-${id}`);
       if (polyline) { instance.map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
     });
 
@@ -396,13 +396,13 @@ window.Hooks.DMarkItem = {
     const instance = _findInstance(this.el);
     if (!instance || !instance.map) {
       // Map not ready yet — find or create a pending instance and queue
-      const wrapper = this.el.closest("[data-component-id]");
+      const wrapper = this.el.closest("[data-channel]");
       if (wrapper) {
-        const cid = wrapper.dataset.componentId;
-        let inst = _instances.get(cid);
+        const ch = wrapper.dataset.channel;
+        let inst = _instances.get(ch);
         if (!inst) {
-          inst = new MapInstance(cid);
-          _instances.set(cid, inst);
+          inst = new MapInstance(ch);
+          _instances.set(ch, inst);
         }
         inst.pendingMarkers.push({ el: this.el, hookCtx: this });
       }
@@ -472,13 +472,13 @@ window.Hooks.DPolylineItem = {
   mounted() {
     const instance = _findInstance(this.el);
     if (!instance || !instance.map) {
-      const wrapper = this.el.closest("[data-component-id]");
+      const wrapper = this.el.closest("[data-channel]");
       if (wrapper) {
-        const cid = wrapper.dataset.componentId;
-        let inst = _instances.get(cid);
+        const ch = wrapper.dataset.channel;
+        let inst = _instances.get(ch);
         if (!inst) {
-          inst = new MapInstance(cid);
-          _instances.set(cid, inst);
+          inst = new MapInstance(ch);
+          _instances.set(ch, inst);
         }
         inst.pendingPolylines.push({ el: this.el, hookCtx: this });
       }

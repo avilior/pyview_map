@@ -4,26 +4,30 @@ from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
 
 
 class APIListSource:
-    """List item fan-out source with component_id routing.
+    """List item fan-out source with channel routing.
 
     Same bounded-queue fan-out pattern as APIMarkerSource.
     Each LiveView connection creates its own instance with a dedicated
     bounded queue. Push methods fan out operations to matching subscriber queues.
+
+    Subscribers are keyed by channel — a required routing group identifier.
+    The shared _items dict is partitioned by channel so initial state is isolated.
     """
 
-    # component_id → set of subscriber queues.  None key = "receive all" (broadcast).
-    _subscribers: dict[str | None, set[asyncio.Queue]] = {}
-    _items: dict[str, DListItem] = {}
+    # channel → set of subscriber queues
+    _subscribers: dict[str, set[asyncio.Queue]] = {}
+    # channel → {item_id → DListItem}
+    _items: dict[str, dict[str, DListItem]] = {}
 
-    def __init__(self, *, component_id: str | None = None):
-        self._component_id = component_id
+    def __init__(self, *, channel: str):
+        self._channel = channel
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        subs = type(self)._subscribers.setdefault(component_id, set())
+        subs = type(self)._subscribers.setdefault(channel, set())
         subs.add(self._queue)
 
     @property
     def items(self) -> list[DListItem]:
-        return list(self.__class__._items.values())
+        return list(self.__class__._items.get(self._channel, {}).values())
 
     def next_update(self) -> dict:
         try:
@@ -32,51 +36,41 @@ class APIListSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict, *, component_id: str | None = None) -> None:
-        """Fan out an op to targeted subscribers and broadcast (None-key) subscribers."""
-        targets: list[set[asyncio.Queue]] = []
+    def _broadcast(cls, op: dict, *, channel: str) -> None:
+        """Fan out an op to all subscribers of the given channel."""
+        subs = cls._subscribers.get(channel)
+        if not subs:
+            return
 
-        if None in cls._subscribers:
-            targets.append(cls._subscribers[None])
+        dead: list[asyncio.Queue] = []
+        for q in subs:
+            try:
+                q.put_nowait(op)
+            except asyncio.QueueFull:
+                dead.append(q)
 
-        if component_id is not None and component_id in cls._subscribers:
-            targets.append(cls._subscribers[component_id])
-
-        dead: list[tuple[str | None, asyncio.Queue]] = []
-        seen: set[int] = set()
-
-        for target_set in targets:
-            for q in target_set:
-                qid = id(q)
-                if qid in seen:
-                    continue
-                seen.add(qid)
-                try:
-                    q.put_nowait(op)
-                except asyncio.QueueFull:
-                    dead.append((component_id, q))
-
-        for key, q in dead:
-            for s in cls._subscribers.values():
-                s.discard(q)
+        for q in dead:
+            subs.discard(q)
 
     @classmethod
     def push_add(
         cls, id: str, label: str, subtitle: str = "",
-        *, at: int = -1, component_id: str | None = None,
+        *, at: int = -1, channel: str,
     ) -> None:
-        cls._items[id] = DListItem(id=id, label=label, subtitle=subtitle)
+        channel_items = cls._items.setdefault(channel, {})
+        channel_items[id] = DListItem(id=id, label=label, subtitle=subtitle)
         cls._broadcast(
             {"op": "add", "id": id, "label": label, "subtitle": subtitle, "at": at},
-            component_id=component_id,
+            channel=channel,
         )
 
     @classmethod
-    def push_remove(cls, id: str, *, component_id: str | None = None) -> None:
-        cls._items.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id}, component_id=component_id)
+    def push_remove(cls, id: str, *, channel: str) -> None:
+        channel_items = cls._items.get(channel, {})
+        channel_items.pop(id, None)
+        cls._broadcast({"op": "delete", "id": id}, channel=channel)
 
     @classmethod
-    def push_clear(cls, *, component_id: str | None = None) -> None:
-        cls._items.clear()
-        cls._broadcast({"op": "clear"}, component_id=component_id)
+    def push_clear(cls, *, channel: str) -> None:
+        cls._items.pop(channel, None)
+        cls._broadcast({"op": "clear"}, channel=channel)

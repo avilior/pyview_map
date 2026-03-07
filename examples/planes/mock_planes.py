@@ -3,10 +3,11 @@
 Run this while the server is up to see a plane fly from Ottawa to Montreal:
 
     uv run python examples/planes/mock_planes.py
+    uv run python examples/planes/mock_planes.py --channel dmap
 
-To target a specific component instance (e.g. on the /mmap multi-map page):
+To target a specific channel (e.g. on the /mmap multi-map page):
 
-    uv run python examples/planes/mock_planes.py --component-id left
+    uv run python examples/planes/mock_planes.py --channel left
 """
 
 import argparse
@@ -36,11 +37,10 @@ AUTH_TOKEN = "tok-acme-001"
 # Helper
 # ---------------------------------------------------------------------------
 
-async def _send(rpc: ClientRPC, method: str, params: dict | None = None, *, component_id: str | None = None) -> None:
+async def _send(rpc: ClientRPC, method: str, params: dict | None = None, *, channel: str) -> None:
     """Fire a JSON-RPC request and consume the response."""
     p = dict(params) if params else {}
-    if component_id is not None:
-        p["component_id"] = component_id
+    p["channel"] = channel
     req = JSONRPCRequest(method=method, params=p)
     async for _ in rpc.send_request(req):
         pass
@@ -153,9 +153,9 @@ class Flight:
             last_position = origin_airport.latlng,
         )
 
-    async def start(self, rpc, *, component_id: str | None = None):
+    async def start(self, rpc, *, channel: str):
 
-        await _send(rpc, "markers.add", self.plane.marker.to_dict(), component_id=component_id)
+        await _send(rpc, "markers.add", self.plane.marker.to_dict(), channel=channel)
 
         planned_route_dpolyline = DPolyline(
             id="flight1_route",
@@ -165,9 +165,9 @@ class Flight:
             weight=3,
             opacity=1.0,
         )
-        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict(), component_id=component_id)
-        # await _send(rpc, "map.followMarker", {"id": "plane1"}, component_id=component_id)
-        print(f"Added plane{' (component_id=' + component_id + ')' if component_id else ''}")
+        await _send(rpc, "polylines.add", planned_route_dpolyline.to_dict(), channel=channel)
+        # await _send(rpc, "map.followMarker", {"id": "plane1"}, channel=channel)
+        print(f"Added plane (channel={channel})")
 
         while True:
 
@@ -186,7 +186,7 @@ class Flight:
             self.plane.marker.lat_lng = current_latlng
             self.last_position = current_latlng
 
-            await _send(rpc, "markers.update", self.plane.marker.to_dict(), component_id=component_id)
+            await _send(rpc, "markers.update", self.plane.marker.to_dict(), channel=channel)
 
             # if the plane arrived at destination break
             if current_latlng == self.destination.latlng:
@@ -232,9 +232,9 @@ async def listen_events(rpc: ClientRPC) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Flight simulation client")
-    parser.add_argument("--component-id", default=None, help="Target a specific component instance (e.g. 'left')")
+    parser.add_argument("--channel", default="dmap", help="Target channel (default: dmap)")
     args = parser.parse_args()
-    component_id: str | None = args.component_id
+    channel: str = args.channel
 
     init_airport_markers()
 
@@ -248,12 +248,11 @@ async def main() -> None:
         batch_req = []
         for ap in airports:
             params = ap.marker.to_dict()
-            if component_id is not None:
-                params["component_id"] = component_id
+            params["channel"] = channel
             batch_req.append(JSONRPCRequest(method="markers.add", params=params))
         async for resp in rpc.send_request(batch_req):
             pass
-        print(f"Rendered airports{' (component_id=' + component_id + ')' if component_id else ''}")
+        print(f"Rendered airports (channel={channel})")
 
         # Create and display flight
 
@@ -261,7 +260,7 @@ async def main() -> None:
 
             flight = Flight.build_flight("YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500)
 
-            all_tasks.append(asyncio.create_task(flight.start(rpc, component_id=component_id)))
+            all_tasks.append(asyncio.create_task(flight.start(rpc, channel=channel)))
 
             while True:
                 await asyncio.sleep(1)

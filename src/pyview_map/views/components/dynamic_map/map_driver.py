@@ -19,40 +19,35 @@ class MapDriver:
     handle_event(), and render() — no sources, queues, or ops tracking.
 
     Source routing:
-      - Default (no source_class): uses APIMarkerSource with component_id
-        routing — the driver auto-subscribes using the component_id.
+      - Default (no source_class): uses APIMarkerSource with the driver's channel.
       - Explicit source_class: uses the given class with source_kwargs as-is.
-        Routing depends on whether source_kwargs includes ``component_id``.
+        The marker source may not need a channel (e.g. MockGenerator).
+        Polyline source and command queue always use the driver's channel.
 
     Usage::
 
-        # Simple — default APIMarkerSource with auto component_id routing:
+        # Simple — default APIMarkerSource with channel routing:
         self._map = MapDriver("my-map")
 
         # Custom source class (e.g. MockGenerator):
         self._map = MapDriver("dmap", source_class=MockGenerator, source_kwargs={"initial_count": 10})
-
-        # Explicit APIMarkerSource with no routing (backward compat):
-        self._map = MapDriver("dmap", source_class=APIMarkerSource)
     """
 
-    def __init__(self, component_id: str, *, source_class: type | None = None, source_kwargs: dict | None = None):
-        self._component_id = component_id
+    def __init__(self, channel: str, *, source_class: type | None = None, source_kwargs: dict | None = None):
+        self._channel = channel
 
         if source_class is not None:
             # Explicit source class — use source_kwargs as-is
             kwargs = dict(source_kwargs) if source_kwargs else {}
             self._source: MarkerSource = source_class(**kwargs)
         else:
-            # Default: APIMarkerSource with component_id routing
+            # Default: APIMarkerSource with channel routing
             kwargs = dict(source_kwargs) if source_kwargs else {}
-            kwargs.setdefault("component_id", component_id)
+            kwargs.setdefault("channel", channel)
             self._source = APIMarkerSource(**kwargs)
 
-        # Polyline source and command queue use the same routing
-        subscribe_id = kwargs.get("component_id")
-        self._subscribe_id = subscribe_id
-        self._polyline_source = APIPolylineSource(component_id=subscribe_id)
+        # Polyline source and command queue always use the driver's channel
+        self._polyline_source = APIPolylineSource(channel=channel)
 
         self._initial_markers = self._source.markers
         self._initial_polylines = self._polyline_source.polylines
@@ -64,7 +59,7 @@ class MapDriver:
 
     def connect(self):
         """Subscribe to CommandQueue. Call when socket.connected."""
-        self._cmd_queue = CommandQueue.subscribe(component_id=self._subscribe_id)
+        self._cmd_queue = CommandQueue.subscribe(channel=self._channel)
 
     async def tick(self, socket):
         """Drain sources + command queue. Push commands via socket. Call from handle_info("tick")."""
@@ -91,7 +86,7 @@ class MapDriver:
                     cmd = self._cmd_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
-                event_name, payload = cmd.to_push_event(target=self._component_id)
+                event_name, payload = cmd.to_push_event(target=self._channel)
                 await socket.push_event(event_name, payload)
 
         self._marker_ops = marker_ops
@@ -159,12 +154,12 @@ class MapDriver:
 
     def render(self):
         """Return live_component() call with current state."""
-        return live_component(DynamicMapComponent, id=self._component_id,
+        return live_component(DynamicMapComponent, id=self._channel,
             initial_markers=self._initial_markers,
             initial_polylines=self._initial_polylines,
             icon_registry_json=self._icon_registry_json,
             marker_ops=self._marker_ops,
             polyline_ops=self._polyline_ops,
             ops_version=self._ops_version,
-            component_id=self._component_id,
+            channel=self._channel,
         )

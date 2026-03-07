@@ -19,25 +19,25 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
     """
     Multi-map page with two side-by-side DynamicMapComponent instances.
 
-    Each map has its own component_id. External clients use the component_id parameter
+    Each map has its own channel. External clients use the channel parameter
     to route markers/polylines/commands to a specific map.
 
     Usage:
         app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
     """
 
-    component_ids: list[str] = []
+    channels: list[str] = []
     source_class: type = None  # type: ignore[assignment]
     tick_interval: float = 1.2
 
     @classmethod
-    def with_maps(cls, component_ids: list[str], *, source_class: type | None = None, tick_interval: float = 1.2):
+    def with_maps(cls, channels: list[str], *, source_class: type | None = None, tick_interval: float = 1.2):
         """Return a configured MultiMapLiveView class."""
         return type(
             "MultiMapLiveView",
             (cls,),
             {
-                "component_ids": component_ids,
+                "channels": channels,
                 "source_class": source_class,
                 "tick_interval": tick_interval,
             },
@@ -45,15 +45,15 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
 
     async def mount(self, socket: LiveViewSocket[MultiMapPageContext], session):
         self._maps: dict[str, MapDriver] = {}
-        for component_id in self.component_ids:
+        for channel in self.channels:
             if self.source_class:
-                self._maps[component_id] = MapDriver(
-                    component_id,
+                self._maps[channel] = MapDriver(
+                    channel,
                     source_class=self.source_class,
-                    source_kwargs={"component_id": component_id},
+                    source_kwargs={"channel": channel},
                 )
             else:
-                self._maps[component_id] = MapDriver(component_id)
+                self._maps[channel] = MapDriver(channel)
 
         socket.context = MultiMapPageContext()
 
@@ -89,7 +89,7 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
         last_pe = assigns.last_polyline_event
 
         # Build a component for each map
-        map_components = [(cid, driver.render()) for cid, driver in self._maps.items()]
+        map_components = [(ch, driver.render()) for ch, driver in self._maps.items()]
 
         # For 2 maps: side-by-side layout
         left_id, left_comp = map_components[0] if len(map_components) > 0 else ("", t"")
@@ -105,7 +105,7 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
         <h1 class="text-3xl font-bold text-gray-900 mb-1">\U0001f4e1 Multi-Map Dashboard</h1>
         <p class="text-sm text-gray-500 mb-6">
-            Two independent maps — use <code>component_id</code> to route markers to a specific map.
+            Two independent maps — use <code>channel</code> to route markers to a specific map.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
             <div>

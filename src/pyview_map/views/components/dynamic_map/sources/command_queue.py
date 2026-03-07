@@ -6,25 +6,22 @@ from pyview_map.views.components.dynamic_map.models.map_events import MapCommand
 
 
 class CommandQueue:
-    """Fan-out queue for map commands from external clients with component_id routing.
+    """Fan-out queue for map commands from external clients with channel routing.
 
     Each LiveView connection subscribes and gets its own bounded queue.
     JSON-RPC handlers push commands; push() fans out to matching subscribers.
 
-    Subscribers are keyed by component_id:
-      - subscribe(component_id="fleet") → receives commands targeted at "fleet" AND broadcasts
-      - subscribe(component_id=None) → receives ALL commands regardless of target component_id
-
+    Subscribers are keyed by channel — a required routing group identifier.
     Slow/dead subscribers are auto-cleaned when their queue fills up.
     """
 
-    # component_id → set of subscriber queues.  None key = "receive all" (broadcast subscribers).
-    _subscribers: dict[str | None, set[asyncio.Queue[MapCommand]]] = {}
+    # channel → set of subscriber queues
+    _subscribers: dict[str, set[asyncio.Queue[MapCommand]]] = {}
 
     @classmethod
-    def subscribe(cls, *, component_id: str | None = None) -> asyncio.Queue[MapCommand]:
+    def subscribe(cls, *, channel: str) -> asyncio.Queue[MapCommand]:
         q: asyncio.Queue[MapCommand] = asyncio.Queue(maxsize=256)
-        subs = cls._subscribers.setdefault(component_id, set())
+        subs = cls._subscribers.setdefault(channel, set())
         subs.add(q)
         return q
 
@@ -34,31 +31,17 @@ class CommandQueue:
             s.discard(q)
 
     @classmethod
-    def push(cls, cmd: MapCommand, *, component_id: str | None = None) -> None:
-        targets: list[set[asyncio.Queue[MapCommand]]] = []
-
-        # Always include broadcast subscribers (component_id=None key)
-        if None in cls._subscribers:
-            targets.append(cls._subscribers[None])
-
-        # If a specific component_id was given, also include its subscribers
-        if component_id is not None and component_id in cls._subscribers:
-            targets.append(cls._subscribers[component_id])
+    def push(cls, cmd: MapCommand, *, channel: str) -> None:
+        subs = cls._subscribers.get(channel)
+        if not subs:
+            return
 
         dead: list[asyncio.Queue[MapCommand]] = []
-        seen: set[int] = set()
-
-        for target_set in targets:
-            for q in target_set:
-                qid = id(q)
-                if qid in seen:
-                    continue
-                seen.add(qid)
-                try:
-                    q.put_nowait(cmd)
-                except asyncio.QueueFull:
-                    dead.append(q)
+        for q in subs:
+            try:
+                q.put_nowait(cmd)
+            except asyncio.QueueFull:
+                dead.append(q)
 
         for q in dead:
-            for s in cls._subscribers.values():
-                s.discard(q)
+            subs.discard(q)

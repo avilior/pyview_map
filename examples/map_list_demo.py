@@ -16,7 +16,7 @@ Run this while the server is up and /map_list_demo is open:
 
 Optionally add some airports first:
 
-    uv run python examples/planes/mock_planes.py --component-id map_list_demo-map
+    uv run python examples/planes/mock_planes.py --channel map_list_demo-map
 """
 
 import asyncio
@@ -60,7 +60,7 @@ async def sync_list_to_viewport(rpc: ClientRPC, bounds: list[list[float]]) -> No
     sw, ne = bounds[0], bounds[1]
 
     # Get all markers
-    result = await _send(rpc, "markers.list")
+    result = await _send(rpc, "markers.list", {"channel": "map_list_demo-map"})
     if not result or "markers" not in result:
         return
 
@@ -71,13 +71,13 @@ async def sync_list_to_viewport(rpc: ClientRPC, bounds: list[list[float]]) -> No
     ]
 
     # Clear and re-populate list
-    await _send(rpc, "list.clear", {"component_id": "map_list_demo-list"})
+    await _send(rpc, "list.clear", {"channel": "map_list_demo-list"})
     for m in visible:
         await _send(rpc, "list.add", {
             "id": m["id"],
             "label": m["name"],
             "subtitle": f"({m['latLng'][0]:.2f}, {m['latLng'][1]:.2f})",
-            "component_id": "map_list_demo-list",
+            "channel": "map_list_demo-list",
         })
 
     print(f"  Synced list: {len(visible)} markers in viewport")
@@ -103,7 +103,7 @@ async def listen_and_coordinate(rpc: ClientRPC) -> None:
                         print(f"  [list-click] {evt.id} → highlighting on map")
                         await _send(rpc, "map.highlightMarker", {
                             "id": evt.id,
-                            "component_id": "map_list_demo-map",
+                            "channel": "map_list_demo-map",
                         })
 
                     case _:

@@ -3,6 +3,7 @@
 Run this while the server is up to see markers appear and move on the /dmap page:
 
     uv run python examples/mock_client.py
+    uv run python examples/mock_client.py --channel dmap
 """
 
 import asyncio
@@ -113,28 +114,33 @@ async def run_command_demo(rpc: ClientRPC, markers: dict[str, dict]) -> None:
 
     # Fly to the first marker
     print(f"  flyTo {first_m['name']} at ({lat}, {lng}) zoom=8")
-    await _send(rpc, "map.flyTo", {"latLng": [lat, lng], "zoom": 8})
+    await _send(rpc, "map.flyTo", {"latLng": [lat, lng], "zoom": 8, "channel": "dmap"})
     await asyncio.sleep(3)
 
     # Highlight it
     print(f"  highlightMarker {first_id}")
-    await _send(rpc, "map.highlightMarker", {"id": first_id})
+    await _send(rpc, "map.highlightMarker", {"id": first_id, "channel": "dmap"})
     await asyncio.sleep(2)
 
     # Zoom to level 6
     print("  setZoom 6")
-    await _send(rpc, "map.setZoom", {"zoom": 6})
+    await _send(rpc, "map.setZoom", {"zoom": 6, "channel": "dmap"})
     await asyncio.sleep(2)
 
     # Reset to US overview
     print("  resetView")
-    await _send(rpc, "map.resetView")
+    await _send(rpc, "map.resetView", {"channel": "dmap"})
     await asyncio.sleep(2)
 
     print("--- Command map_list_demo complete ---\n")
 
 
 async def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="Mock marker client")
+    parser.add_argument("--channel", default="dmap", help="Target channel (default: dmap)")
+    args = parser.parse_args()
+    channel: str = args.channel
 
     initial_count = 1000
 
@@ -160,7 +166,7 @@ async def main() -> None:
             }
             heading = markers[mid]["heading"]
             speed = markers[mid]["speed"]
-            req = JSONRPCRequest(method="markers.add", params={"id": mid, "name": name, "latLng": [lat, lng], "icon": icon, "heading": heading, "speed": speed})
+            req = JSONRPCRequest(method="markers.add", params={"id": mid, "name": name, "latLng": [lat, lng], "icon": icon, "heading": heading, "speed": speed, "channel": channel})
             async for resp in rpc.send_request(req):
                 pass  # consume response
             print(f"  added {name} ({icon}) at ({lat}, {lng}) heading={heading:.0f}° speed={speed:.1f}")
@@ -177,7 +183,7 @@ async def main() -> None:
                 await asyncio.sleep(1.2)
                 mid, m = random.choice(list(markers.items()))
                 new_latlng = _advance(m)
-                req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng, "icon": m["icon"], "heading": m["heading"], "speed": m["speed"]})
+                req = JSONRPCRequest(method="markers.update", params={"id": mid, "name": m["name"], "latLng": new_latlng, "icon": m["icon"], "heading": m["heading"], "speed": m["speed"], "channel": channel})
                 async for resp in rpc.send_request(req):
                     if isinstance(resp, JSONRPCErrorResponse):
                         print(f"  ERROR: {resp}")

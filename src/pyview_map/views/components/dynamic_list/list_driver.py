@@ -39,9 +39,9 @@ class ListDriver:
                 return t'<div>{self._list.render()}</div>'
     """
 
-    def __init__(self, component_id: str):
-        self._component_id = component_id
-        self._list_source = APIListSource(component_id=component_id)
+    def __init__(self, channel: str):
+        self._channel = channel
+        self._list_source = APIListSource(channel=channel)
         self._initial_items = self._list_source.items
         self._list_ops: list[dict] = []
         self._ops_version: int = 0
@@ -49,7 +49,7 @@ class ListDriver:
 
     def connect(self):
         """Subscribe to ListCommandQueue. Call when socket.connected."""
-        self._cmd_queue = ListCommandQueue.subscribe(component_id=self._component_id)
+        self._cmd_queue = ListCommandQueue.subscribe(channel=self._channel)
 
     async def tick(self, socket):
         """Drain list source + command queue. Push commands via socket. Call from handle_info("tick")."""
@@ -68,7 +68,7 @@ class ListDriver:
                     cmd = self._cmd_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
-                event_name, payload = cmd.to_push_event(target=self._component_id)
+                event_name, payload = cmd.to_push_event(target=self._channel)
                 await socket.push_event(event_name, payload)
 
         self._list_ops = list_ops
@@ -91,9 +91,9 @@ class ListDriver:
 
     def render(self):
         """Return live_component() call with current state."""
-        return live_component(DynamicListComponent, id=self._component_id,
+        return live_component(DynamicListComponent, id=self._channel,
             initial_items=self._initial_items,
             list_ops=self._list_ops,
             ops_version=self._ops_version,
-            component_id=self._component_id,
+            channel=self._channel,
         )

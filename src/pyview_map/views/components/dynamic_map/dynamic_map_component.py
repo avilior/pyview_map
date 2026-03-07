@@ -50,7 +50,7 @@ class DynamicMapComponentContext:
     markers: Stream[DMarker]
     polylines: Stream[DPolyline]
     icon_registry_json: str
-    component_id: str
+    channel: str
     _last_version: int = 0
 
 
@@ -114,14 +114,14 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
     """
 
     async def mount(self, socket: ComponentSocket[DynamicMapComponentContext], assigns: dict[str, Any]) -> None:
-        component_id = assigns.get("component_id", "dmap")
+        channel = assigns.get("channel", "dmap")
         initial_markers = assigns.get("initial_markers", [])
         initial_polylines = assigns.get("initial_polylines", [])
         socket.context = DynamicMapComponentContext(
-            markers=Stream(initial_markers, name=f"{component_id}-markers"),
-            polylines=Stream(initial_polylines, name=f"{component_id}-polylines"),
+            markers=Stream(initial_markers, name=f"{channel}-markers"),
+            polylines=Stream(initial_polylines, name=f"{channel}-polylines"),
             icon_registry_json=assigns.get("icon_registry_json", "{}"),
-            component_id=component_id,
+            channel=channel,
         )
 
     async def update(self, socket: ComponentSocket[DynamicMapComponentContext], assigns: dict[str, Any]) -> None:
@@ -131,16 +131,16 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
             return
         ctx._last_version = version
 
-        marker_stream_name = f"{ctx.component_id}-markers"
-        polyline_stream_name = f"{ctx.component_id}-polylines"
+        marker_stream_name = f"{ctx.channel}-markers"
+        polyline_stream_name = f"{ctx.channel}-polylines"
         _apply_marker_ops(ctx.markers, assigns.get("marker_ops", []), stream_name=marker_stream_name)
         _apply_polyline_ops(ctx.polylines, assigns.get("polyline_ops", []), stream_name=polyline_stream_name)
 
     def template(self, assigns: DynamicMapComponentContext, meta: ComponentMeta):
-        component_id = assigns.component_id
+        channel = assigns.channel
         icon_json = assigns.icon_registry_json
-        markers_id = f"{component_id}-markers"
-        polylines_id = f"{component_id}-polylines"
+        markers_id = f"{channel}-markers"
+        polylines_id = f"{channel}-polylines"
 
         markers_html = stream_for(assigns.markers, lambda dom_id, marker:
             t'<div id="{dom_id}" phx-hook="DMarkItem" data-name="{marker.name}" data-lat="{marker.lat}" data-lng="{marker.lng}" data-icon="{marker.icon}" data-heading="{marker.heading}" data-speed="{marker.speed}"></div>'
@@ -150,9 +150,9 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
             t'<div id="{dom_id}" phx-hook="DPolylineItem" data-name="{polyline.name}" data-path="{json.dumps(polyline.path_as_lists)}" data-color="{polyline.color}" data-weight="{polyline.weight}" data-opacity="{polyline.opacity}" data-dash-array="{polyline.dash_array}"></div>'
         )
 
-        return t"""<div data-component-id="{component_id}">
-    <div phx-update="ignore" id="{component_id}_wrapper">
-        <div id="{component_id}"
+        return t"""<div data-channel="{channel}">
+    <div phx-update="ignore" id="{channel}_wrapper">
+        <div id="{channel}"
              phx-hook="DynamicMap"
              data-icon-registry="{icon_json}"
              class="w-full h-96 lg:h-[580px] rounded-md overflow-hidden border border-gray-300">

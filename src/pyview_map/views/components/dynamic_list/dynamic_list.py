@@ -22,7 +22,7 @@ from .models.list_events import ListItemClickEvent
 @dataclass
 class DynamicListComponentContext:
     items: Stream[DListItem]
-    component_id: str
+    channel: str
     _last_version: int = 0
 
 
@@ -56,11 +56,11 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
     """
 
     async def mount(self, socket: ComponentSocket[DynamicListComponentContext], assigns: dict[str, Any]) -> None:
-        component_id = assigns.get("component_id", "dlist")
+        channel = assigns.get("channel", "dlist")
         initial_items = assigns.get("initial_items", [])
         socket.context = DynamicListComponentContext(
-            items=Stream(initial_items, name=f"{component_id}-list-items"),
-            component_id=component_id,
+            items=Stream(initial_items, name=f"{channel}-list-items"),
+            channel=channel,
         )
 
     async def update(self, socket: ComponentSocket[DynamicListComponentContext], assigns: dict[str, Any]) -> None:
@@ -70,7 +70,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
             return
         ctx._last_version = version
 
-        stream_name = f"{ctx.component_id}-list-items"
+        stream_name = f"{ctx.channel}-list-items"
         _apply_list_ops(ctx.items, assigns.get("list_ops", []), stream_name=stream_name)
 
     async def handle_event(self, event: str, payload: dict, socket: ComponentSocket[DynamicListComponentContext]) -> None:
@@ -81,15 +81,15 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
             EventBroadcaster.broadcast(evt)
 
     def template(self, assigns: DynamicListComponentContext, meta: ComponentMeta):
-        component_id = assigns.component_id
-        items_id = f"{component_id}-list-items"
+        channel = assigns.channel
+        items_id = f"{channel}-list-items"
 
         items_html = stream_for(assigns.items, lambda dom_id, item:
             t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-target="{meta.myself}" phx-value-id="{item.id}" phx-value-label="{item.label}"><div class="font-medium text-sm text-gray-800">{item.label}</div><div class="text-xs text-gray-500">{item.subtitle}</div></div>'
         )
 
-        return t"""<div data-component-id="{component_id}">
-    <div id="{component_id}"
+        return t"""<div data-channel="{channel}">
+    <div id="{channel}"
          phx-hook="DynamicList"
          class="w-full max-h-96 lg:max-h-[580px] overflow-y-auto rounded-md border border-gray-300 bg-white">
         <div id="{items_id}" phx-update="stream">
@@ -120,7 +120,7 @@ class DynamicListLiveView(TemplateView, LiveView[DynamicListPageContext]):
 
     async def mount(self, socket: LiveViewSocket[DynamicListPageContext], session):
         from .list_driver import ListDriver
-        self._list = ListDriver("dlist")
+        self._list = ListDriver(channel="dlist")
         socket.context = DynamicListPageContext()
         if socket.connected:
             self._list.connect()
