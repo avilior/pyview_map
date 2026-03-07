@@ -107,7 +107,7 @@ async def listen_and_coordinate(rpc: ClientRPC) -> None:
                         })
 
                     case _:
-                        pass
+                        print(f"  [unhandled] {evt}")
 
             case JSONRPCResponse():
                 print("Event stream ended")
@@ -119,6 +119,7 @@ async def listen_and_coordinate(rpc: ClientRPC) -> None:
 
 async def main() -> None:
     async with ClientRPC(base_url=BASE_URL, auth_token=AUTH_TOKEN) as rpc:
+
         print("Connected. Listening for events...")
         print("Open http://localhost:8123/demo and add markers to see coordination.")
         print("Tip: run 'uv run python examples/planes/mock_planes.py --component-id map_list_demo-map' in another terminal")
