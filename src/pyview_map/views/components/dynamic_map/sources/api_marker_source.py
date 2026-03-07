@@ -31,4 +31,4 @@ class MarkerSource(Protocol):
         ...
 
 
-marker_source = FanOutSource()
+marker_source: FanOutSource[DMarker] = FanOutSource()

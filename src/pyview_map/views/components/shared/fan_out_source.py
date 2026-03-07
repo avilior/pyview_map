@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 
-class FanOutReader:
+class FanOutReader[T]:
     """Per-connection reader returned by ``FanOutSource.subscribe()``.
 
     Provides ``next_update()`` to drain the instance queue and an ``items``
     property for the current shared state of the channel.
     """
 
-    def __init__(self, source: FanOutSource, channel: str) -> None:
+    def __init__(self, source: FanOutSource[T], channel: str) -> None:
         self._source = source
         self._channel = channel
-        self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+        self._queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
 
     def next_update(self) -> dict:
         try:
@@ -23,12 +22,12 @@ class FanOutReader:
             return {"op": "noop"}
 
     @property
-    def items(self) -> list:
+    def items(self) -> list[T]:
         """Current items for this reader's channel."""
         return list(self._source._items.get(self._channel, {}).values())
 
 
-class FanOutSource:
+class FanOutSource[T]:
     """Generic fan-out source with shared state and channel/cid routing.
 
     Create one instance per data type (markers, polylines, list items).
@@ -36,14 +35,12 @@ class FanOutSource:
 
     Usage::
 
-        # Module level — one per data type:
-        marker_source = FanOutSource()
-        polyline_source = FanOutSource()
+        marker_source = FanOutSource[DMarker]()
 
-        # Driver subscribes to get a reader:
+        # Driver subscribes to get a typed reader:
         reader = marker_source.subscribe(channel="dmap", cid="1")
-        initial = reader.items        # shared state snapshot
-        update = reader.next_update() # drain per-connection queue
+        initial: list[DMarker] = reader.items
+        update = reader.next_update()
 
         # API layer pushes ops:
         marker_source.push_op({"op": "add", "id": "m1", ...}, channel="dmap", item=marker)
@@ -51,13 +48,13 @@ class FanOutSource:
 
     def __init__(self) -> None:
         # channel → {cid → queue}
-        self._subscribers: dict[str, dict[str, asyncio.Queue]] = {}
-        # channel → {item_id → item}
-        self._items: dict[str, dict[str, Any]] = {}
+        self._subscribers: dict[str, dict[str, asyncio.Queue[dict]]] = {}
+        # channel → {item_id → T}
+        self._items: dict[str, dict[str, T]] = {}
 
-    def subscribe(self, channel: str, cid: str) -> FanOutReader:
+    def subscribe(self, channel: str, cid: str) -> FanOutReader[T]:
         """Create a reader for the given channel and cid."""
-        reader = FanOutReader(self, channel)
+        reader = FanOutReader[T](self, channel)
         self._subscribers.setdefault(channel, {})[cid] = reader._queue
         return reader
 
@@ -66,12 +63,12 @@ class FanOutSource:
         if subs:
             subs.pop(cid, None)
 
-    def channel_items(self, channel: str) -> dict[str, Any]:
+    def channel_items(self, channel: str) -> dict[str, T]:
         """Return the raw item dict for a channel (used by list/query APIs)."""
         return self._items.get(channel, {})
 
     def push_op(
-        self, op: dict, *, channel: str, cid: str = "*", item: Any = None,
+        self, op: dict, *, channel: str, cid: str = "*", item: T | None = None,
     ) -> None:
         """Store/remove an item and broadcast the op dict.
 
