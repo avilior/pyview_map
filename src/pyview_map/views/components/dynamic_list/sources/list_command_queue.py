@@ -6,39 +6,47 @@ from pyview_map.views.components.dynamic_list.models.list_events import ListComm
 
 
 class ListCommandQueue:
-    """Fan-out queue for list commands from external clients with channel routing.
+    """Fan-out queue for list commands from external clients with channel/cid routing.
 
     Same pattern as CommandQueue but for list commands.
-    Subscribers are keyed by channel — a required routing group identifier.
+    Subscribers are keyed by channel and cid. cid="*" broadcasts to all instances.
     """
 
-    # channel → set of subscriber queues
-    _subscribers: dict[str, set[asyncio.Queue[ListCommand]]] = {}
+    # channel → {cid → queue}
+    _subscribers: dict[str, dict[str, asyncio.Queue[ListCommand]]] = {}
 
     @classmethod
-    def subscribe(cls, *, channel: str) -> asyncio.Queue[ListCommand]:
+    def subscribe(cls, *, channel: str, cid: str) -> asyncio.Queue[ListCommand]:
         q: asyncio.Queue[ListCommand] = asyncio.Queue(maxsize=256)
-        subs = cls._subscribers.setdefault(channel, set())
-        subs.add(q)
+        subs = cls._subscribers.setdefault(channel, {})
+        subs[cid] = q
         return q
 
     @classmethod
-    def unsubscribe(cls, q: asyncio.Queue[ListCommand]) -> None:
-        for s in cls._subscribers.values():
-            s.discard(q)
+    def unsubscribe(cls, *, channel: str, cid: str) -> None:
+        subs = cls._subscribers.get(channel)
+        if subs:
+            subs.pop(cid, None)
 
     @classmethod
-    def push(cls, cmd: ListCommand, *, channel: str) -> None:
+    def push(cls, cmd: ListCommand, *, channel: str, cid: str = "*") -> None:
         subs = cls._subscribers.get(channel)
         if not subs:
             return
 
-        dead: list[asyncio.Queue[ListCommand]] = []
-        for q in subs:
-            try:
-                q.put_nowait(cmd)
-            except asyncio.QueueFull:
-                dead.append(q)
-
-        for q in dead:
-            subs.discard(q)
+        if cid == "*":
+            dead: list[str] = []
+            for instance_cid, q in subs.items():
+                try:
+                    q.put_nowait(cmd)
+                except asyncio.QueueFull:
+                    dead.append(instance_cid)
+            for instance_cid in dead:
+                subs.pop(instance_cid, None)
+        else:
+            q = subs.get(cid)
+            if q is not None:
+                try:
+                    q.put_nowait(cmd)
+                except asyncio.QueueFull:
+                    subs.pop(cid, None)

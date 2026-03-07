@@ -9,30 +9,30 @@ from pyview_map.views.components.shared.event_broadcaster import EventBroadcaste
 @jrpc_service.request("list.add")
 def list_add(
     id: str, label: str, channel: str,
-    subtitle: str = "", at: int = -1,
+    subtitle: str = "", at: int = -1, cid: str = "*",
 ) -> dict:
-    APIListSource.push_add(id, label, subtitle, at=at, channel=channel)
-    EventBroadcaster.broadcast(ListItemOpEvent(op="add", id=id, label=label, subtitle=subtitle, at=at))
+    APIListSource.push_add(id, label, subtitle, at=at, channel=channel, cid=cid)
+    EventBroadcaster.broadcast(ListItemOpEvent(op="add", id=id, label=label, subtitle=subtitle, at=at, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("list.remove")
-def list_remove(id: str, channel: str) -> dict:
-    APIListSource.push_remove(id, channel=channel)
-    EventBroadcaster.broadcast(ListItemOpEvent(op="delete", id=id))
+def list_remove(id: str, channel: str, cid: str = "*") -> dict:
+    APIListSource.push_remove(id, channel=channel, cid=cid)
+    EventBroadcaster.broadcast(ListItemOpEvent(op="delete", id=id, channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("list.clear")
-def list_clear(channel: str) -> dict:
-    APIListSource.push_clear(channel=channel)
-    EventBroadcaster.broadcast(ListItemOpEvent(op="clear"))
+def list_clear(channel: str, cid: str = "*") -> dict:
+    APIListSource.push_clear(channel=channel, cid=cid)
+    EventBroadcaster.broadcast(ListItemOpEvent(op="clear", channel=channel, cid=cid))
     return {"ok": True}
 
 
 @jrpc_service.request("list.highlight")
-def list_highlight(id: str, channel: str) -> dict:
-    ListCommandQueue.push(HighlightListItemCmd(id=id), channel=channel)
+def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
+    ListCommandQueue.push(HighlightListItemCmd(id=id), channel=channel, cid=cid)
     return {"ok": True}
 
 

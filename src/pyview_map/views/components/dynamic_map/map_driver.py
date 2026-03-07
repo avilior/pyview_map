@@ -9,6 +9,7 @@ from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
+from pyview_map.views.components.shared.cid import next_cid
 from .models.map_events import MapEvent, MarkerEvent, PolylineEvent
 
 
@@ -18,11 +19,16 @@ class MapDriver:
     A page developer only needs to call connect(), tick(), clear_ops(),
     handle_event(), and render() — no sources, queues, or ops tracking.
 
+    Each driver instance gets a unique cid (channel instance ID) via a
+    monotonic counter. The cid is shared across all its subscriptions
+    (marker source, polyline source, command queue) and included in
+    events so external clients can identify and target specific connections.
+
     Source routing:
-      - Default (no source_class): uses APIMarkerSource with the driver's channel.
+      - Default (no source_class): uses APIMarkerSource with the driver's channel and cid.
       - Explicit source_class: uses the given class with source_kwargs as-is.
-        The marker source may not need a channel (e.g. MockGenerator).
-        Polyline source and command queue always use the driver's channel.
+        The marker source may not need channel/cid (e.g. MockGenerator).
+        Polyline source and command queue always use the driver's channel and cid.
 
     Usage::
 
@@ -35,19 +41,21 @@ class MapDriver:
 
     def __init__(self, channel: str, *, source_class: type | None = None, source_kwargs: dict | None = None):
         self._channel = channel
+        self._cid = next_cid()
 
         if source_class is not None:
             # Explicit source class — use source_kwargs as-is
             kwargs = dict(source_kwargs) if source_kwargs else {}
             self._source: MarkerSource = source_class(**kwargs)
         else:
-            # Default: APIMarkerSource with channel routing
+            # Default: APIMarkerSource with channel and cid routing
             kwargs = dict(source_kwargs) if source_kwargs else {}
             kwargs.setdefault("channel", channel)
+            kwargs.setdefault("cid", self._cid)
             self._source = APIMarkerSource(**kwargs)
 
-        # Polyline source and command queue always use the driver's channel
-        self._polyline_source = APIPolylineSource(channel=channel)
+        # Polyline source and command queue always use the driver's channel and cid
+        self._polyline_source = APIPolylineSource(channel=channel, cid=self._cid)
 
         self._initial_markers = self._source.markers
         self._initial_polylines = self._polyline_source.polylines
@@ -57,9 +65,14 @@ class MapDriver:
         self._ops_version: int = 0
         self._cmd_queue: asyncio.Queue | None = None
 
+    @property
+    def cid(self) -> str:
+        """The channel instance ID for this driver."""
+        return self._cid
+
     def connect(self):
         """Subscribe to CommandQueue. Call when socket.connected."""
-        self._cmd_queue = CommandQueue.subscribe(channel=self._channel)
+        self._cmd_queue = CommandQueue.subscribe(channel=self._channel, cid=self._cid)
 
     async def tick(self, socket):
         """Drain sources + command queue. Push commands via socket. Call from handle_info("tick")."""
@@ -109,6 +122,8 @@ class MapDriver:
                 id=payload.get("id", ""),
                 name=payload.get("name", payload.get("id", "?")),
                 latLng=ll,
+                channel=self._channel,
+                cid=self._cid,
             )
             detail = f"{me.event} → {me.name}"
             if me.latLng:
@@ -124,6 +139,8 @@ class MapDriver:
                 id=payload.get("id", ""),
                 name=payload.get("name", payload.get("id", "?")),
                 latLng=ll,
+                channel=self._channel,
+                cid=self._cid,
             )
             detail = f"{pe.event} → {pe.name}"
             if pe.latLng:
@@ -141,6 +158,8 @@ class MapDriver:
                 zoom=payload.get("zoom", 0),
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
                 bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
+                channel=self._channel,
+                cid=self._cid,
             )
             detail = me.event
             if me.center:

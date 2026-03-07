@@ -16,6 +16,8 @@ class MarkerOpEvent:
     icon: str | None = None
     heading: float | None = None
     speed: float | None = None
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"type": "marker-op", "op": self.op, "id": self.id}
@@ -29,6 +31,10 @@ class MarkerOpEvent:
             d["heading"] = self.heading
         if self.speed is not None:
             d["speed"] = self.speed
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
         return d
 
 
@@ -40,15 +46,22 @@ class MarkerEvent:
     id: str
     name: str
     latLng: LatLng
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "type": "marker-event",
             "event": self.event,
             "id": self.id,
             "name": self.name,
             "latLng": self.latLng.to_list(),
         }
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
+        return d
 
 
 @dataclass(slots=True)
@@ -60,6 +73,8 @@ class MapEvent:
     zoom: int
     latLng: LatLng | None = None
     bounds: tuple[LatLng, LatLng] | None = None  # (sw, ne)
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -71,6 +86,10 @@ class MapEvent:
         }
         if self.bounds is not None:
             d["bounds"] = [self.bounds[0].to_list(), self.bounds[1].to_list()]
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
         return d
 
 
@@ -86,6 +105,8 @@ class PolylineOpEvent:
     weight: int | None = None
     opacity: float | None = None
     dashArray: str | None = None
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"type": "polyline-op", "op": self.op, "id": self.id}
@@ -101,6 +122,10 @@ class PolylineOpEvent:
             d["opacity"] = self.opacity
         if self.dashArray is not None:
             d["dashArray"] = self.dashArray
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
         return d
 
 
@@ -112,15 +137,22 @@ class PolylineEvent:
     id: str
     name: str
     latLng: LatLng
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "type": "polyline-event",
             "event": self.event,
             "id": self.id,
             "name": self.name,
             "latLng": self.latLng.to_list(),
         }
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
+        return d
 
 
 BroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent | PolylineOpEvent | PolylineEvent
@@ -129,6 +161,8 @@ BroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent | PolylineOpEvent | Poly
 def parse_event(params: dict) -> BroadcastEvent:
     """Reconstruct a typed event from a notification params dict."""
     etype = params.get("type")
+    channel = params.get("channel")
+    cid = params.get("cid")
     match etype:
         case "marker-op":
             raw_ll = params.get("latLng")
@@ -139,12 +173,14 @@ def parse_event(params: dict) -> BroadcastEvent:
                 icon=params.get("icon"),
                 heading=params.get("heading"),
                 speed=params.get("speed"),
+                channel=channel, cid=cid,
             )
         case "marker-event":
             return MarkerEvent(
                 event=params["event"], id=params["id"],
                 name=params["name"],
                 latLng=LatLng.from_list(params["latLng"]),
+                channel=channel, cid=cid,
             )
         case "map-event":
             raw_ll = params.get("latLng")
@@ -155,6 +191,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 zoom=params["zoom"],
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
                 bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
+                channel=channel, cid=cid,
             )
         case "polyline-op":
             raw_path = params.get("path")
@@ -166,12 +203,14 @@ def parse_event(params: dict) -> BroadcastEvent:
                 weight=params.get("weight"),
                 opacity=params.get("opacity"),
                 dashArray=params.get("dashArray"),
+                channel=channel, cid=cid,
             )
         case "polyline-event":
             return PolylineEvent(
                 event=params["event"], id=params["id"],
                 name=params["name"],
                 latLng=LatLng.from_list(params["latLng"]),
+                channel=channel, cid=cid,
             )
         case "list-item-op":
             from pyview_map.views.components.dynamic_list.models.list_events import ListItemOpEvent
@@ -181,6 +220,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 label=params.get("label", ""),
                 subtitle=params.get("subtitle", ""),
                 at=params.get("at", -1),
+                channel=channel, cid=cid,
             )
         case "list-item-event":
             from pyview_map.views.components.dynamic_list.models.list_events import ListItemClickEvent
@@ -188,6 +228,7 @@ def parse_event(params: dict) -> BroadcastEvent:
                 event=params["event"],
                 id=params["id"],
                 label=params["label"],
+                channel=channel, cid=cid,
             )
         case _:
             raise ValueError(f"Unknown event type: {etype}")

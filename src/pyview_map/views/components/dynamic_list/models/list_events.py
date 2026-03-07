@@ -12,6 +12,8 @@ class ListItemOpEvent:
     label: str = ""
     subtitle: str = ""
     at: int = -1
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"type": "list-item-op", "op": self.op}
@@ -23,6 +25,10 @@ class ListItemOpEvent:
             d["subtitle"] = self.subtitle
         if self.at != -1:
             d["at"] = self.at
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
         return d
 
 
@@ -33,14 +39,21 @@ class ListItemClickEvent:
     event: str
     id: str
     label: str
+    channel: str | None = None
+    cid: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "type": "list-item-event",
             "event": self.event,
             "id": self.id,
             "label": self.label,
         }
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
+        return d
 
 
 @dataclass(slots=True)

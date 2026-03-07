@@ -5,27 +5,23 @@ from pyview_map.views.components.shared.latlng import LatLng
 
 
 class APIPolylineSource:
-    """Polyline fan-out source with channel routing — structural clone of APIMarkerSource.
+    """Polyline fan-out source with channel/cid routing — structural clone of APIMarkerSource.
 
-    Each LiveView connection creates its own instance with a dedicated
-    bounded queue. Push methods fan out operations to matching subscriber queues.
-
-    Subscribers are keyed by channel — a required routing group identifier.
-    All instances subscribed to the same channel receive the same ops.
-
+    Subscribers are keyed by channel and cid. cid="*" broadcasts to all instances.
     The shared _polylines dict is partitioned by channel so initial state is isolated.
     """
 
-    # channel → set of subscriber queues
-    _subscribers: dict[str, set[asyncio.Queue]] = {}
+    # channel → {cid → queue}
+    _subscribers: dict[str, dict[str, asyncio.Queue]] = {}
     # channel → {polyline_id → DPolyline}
     _polylines: dict[str, dict[str, DPolyline]] = {}
 
-    def __init__(self, *, channel: str):
+    def __init__(self, *, channel: str, cid: str):
         self._channel = channel
+        self._cid = cid
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        subs = type(self)._subscribers.setdefault(channel, set())
-        subs.add(self._queue)
+        subs = type(self)._subscribers.setdefault(channel, {})
+        subs[cid] = self._queue
 
     @property
     def polylines(self) -> list[DPolyline]:
@@ -38,21 +34,31 @@ class APIPolylineSource:
             return {"op": "noop"}
 
     @classmethod
-    def _broadcast(cls, op: dict, *, channel: str) -> None:
-        """Fan out an op to all subscribers of the given channel."""
+    def _broadcast(cls, op: dict, *, channel: str, cid: str = "*") -> None:
+        """Fan out an op to subscribers of the given channel.
+
+        cid="*" broadcasts to all instances; a specific cid targets one instance.
+        """
         subs = cls._subscribers.get(channel)
         if not subs:
             return
 
-        dead: list[asyncio.Queue] = []
-        for q in subs:
-            try:
-                q.put_nowait(op)
-            except asyncio.QueueFull:
-                dead.append(q)
-
-        for q in dead:
-            subs.discard(q)
+        if cid == "*":
+            dead: list[str] = []
+            for instance_cid, q in subs.items():
+                try:
+                    q.put_nowait(op)
+                except asyncio.QueueFull:
+                    dead.append(instance_cid)
+            for instance_cid in dead:
+                subs.pop(instance_cid, None)
+        else:
+            q = subs.get(cid)
+            if q is not None:
+                try:
+                    q.put_nowait(op)
+                except asyncio.QueueFull:
+                    subs.pop(cid, None)
 
     @classmethod
     def push_add(
@@ -66,6 +72,7 @@ class APIPolylineSource:
         dash_array: str | None = None,
         *,
         channel: str,
+        cid: str = "*",
     ) -> None:
         channel_polylines = cls._polylines.setdefault(channel, {})
         channel_polylines[id] = DPolyline(
@@ -79,7 +86,7 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op, channel=channel)
+        cls._broadcast(op, channel=channel, cid=cid)
 
     @classmethod
     def push_update(
@@ -93,6 +100,7 @@ class APIPolylineSource:
         dash_array: str | None = None,
         *,
         channel: str,
+        cid: str = "*",
     ) -> None:
         channel_polylines = cls._polylines.get(channel, {})
         if id in channel_polylines:
@@ -110,10 +118,10 @@ class APIPolylineSource:
         }
         if dash_array is not None:
             op["dashArray"] = dash_array
-        cls._broadcast(op, channel=channel)
+        cls._broadcast(op, channel=channel, cid=cid)
 
     @classmethod
-    def push_delete(cls, id: str, *, channel: str) -> None:
+    def push_delete(cls, id: str, *, channel: str, cid: str = "*") -> None:
         channel_polylines = cls._polylines.get(channel, {})
         channel_polylines.pop(id, None)
-        cls._broadcast({"op": "delete", "id": id}, channel=channel)
+        cls._broadcast({"op": "delete", "id": id}, channel=channel, cid=cid)

@@ -6,14 +6,15 @@ from .sources.api_list_source import APIListSource
 from .sources.list_command_queue import ListCommandQueue
 from .dynamic_list import DynamicListComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
+from pyview_map.views.components.shared.cid import next_cid
 from .models.list_events import ListItemClickEvent
 
 
 class ListDriver:
     """Encapsulates all parent-side plumbing for hosting a DynamicListComponent.
 
-    A page developer only needs to call connect(), tick(), clear_ops(),
-    handle_event(), and render() — no sources, queues, or ops tracking.
+    Each driver instance gets a unique cid (channel instance ID) via a
+    monotonic counter, shared across all its subscriptions.
 
     Usage::
 
@@ -41,15 +42,21 @@ class ListDriver:
 
     def __init__(self, channel: str):
         self._channel = channel
-        self._list_source = APIListSource(channel=channel)
+        self._cid = next_cid()
+        self._list_source = APIListSource(channel=channel, cid=self._cid)
         self._initial_items = self._list_source.items
         self._list_ops: list[dict] = []
         self._ops_version: int = 0
         self._cmd_queue: asyncio.Queue | None = None
 
+    @property
+    def cid(self) -> str:
+        """The channel instance ID for this driver."""
+        return self._cid
+
     def connect(self):
         """Subscribe to ListCommandQueue. Call when socket.connected."""
-        self._cmd_queue = ListCommandQueue.subscribe(channel=self._channel)
+        self._cmd_queue = ListCommandQueue.subscribe(channel=self._channel, cid=self._cid)
 
     async def tick(self, socket):
         """Drain list source + command queue. Push commands via socket. Call from handle_info("tick")."""
@@ -84,7 +91,10 @@ class ListDriver:
         if event == "item-click":
             item_id = payload.get("id", "")
             label = payload.get("label", "")
-            evt = ListItemClickEvent(event="click", id=item_id, label=label)
+            evt = ListItemClickEvent(
+                event="click", id=item_id, label=label,
+                channel=self._channel, cid=self._cid,
+            )
             EventBroadcaster.broadcast(evt)
             return f"click → {label}"
         return None
