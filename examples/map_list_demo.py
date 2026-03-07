@@ -122,7 +122,7 @@ async def main() -> None:
 
         print("Connected. Listening for events...")
         print("Open http://localhost:8123/demo and add markers to see coordination.")
-        print("Tip: run 'uv run python examples/planes/mock_planes.py --component-id map_list_demo-map' in another terminal")
+        print("Tip: run 'uv run python examples/planes/mock_planes.py --channel map_list_demo-map' in another terminal")
         try:
             await listen_and_coordinate(rpc)
         except (KeyboardInterrupt, asyncio.CancelledError):
