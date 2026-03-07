@@ -1,46 +1,41 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 
-class FanOutQueue:
+class FanOutQueue[T]:
     """Generic bounded-queue fan-out with channel/cid routing.
 
-    Each subclass gets its own class-level ``_subscribers`` dict via
-    ``__init_subclass__``, so different queue types are fully isolated.
+    Create one instance per command type. Each instance has its own
+    subscriber registry, providing isolation without subclassing.
 
     Usage::
 
-        class CommandQueue(FanOutQueue):
-            pass
+        from pyview_map.views.components.dynamic_map.models.map_events import MapCommand
 
-        q = CommandQueue.subscribe(channel="dmap", cid="1")
-        CommandQueue.push(some_cmd, channel="dmap")       # cid="*" broadcast
-        CommandQueue.push(some_cmd, channel="dmap", cid="1")  # targeted
+        command_queue = FanOutQueue[MapCommand]()
+
+        q = command_queue.subscribe(channel="dmap", cid="1")
+        command_queue.push(some_cmd, channel="dmap")           # cid="*" broadcast
+        command_queue.push(some_cmd, channel="dmap", cid="1")  # targeted
     """
 
-    _subscribers: dict[str, dict[str, asyncio.Queue]]
+    def __init__(self) -> None:
+        # channel → {cid → queue}
+        self._subscribers: dict[str, dict[str, asyncio.Queue[T]]] = {}
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._subscribers = {}
-
-    @classmethod
-    def subscribe(cls, *, channel: str, cid: str) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
-        cls._subscribers.setdefault(channel, {})[cid] = q
+    def subscribe(self, channel: str, cid: str) -> asyncio.Queue[T]:
+        q: asyncio.Queue[T] = asyncio.Queue(maxsize=256)
+        self._subscribers.setdefault(channel, {})[cid] = q
         return q
 
-    @classmethod
-    def unsubscribe(cls, *, channel: str, cid: str) -> None:
-        subs = cls._subscribers.get(channel)
+    def unsubscribe(self, channel: str, cid: str) -> None:
+        subs = self._subscribers.get(channel)
         if subs:
             subs.pop(cid, None)
 
-    @classmethod
-    def push(cls, item: Any, *, channel: str, cid: str = "*") -> None:
-        subs = cls._subscribers.get(channel)
+    def push(self, item: T, *, channel: str, cid: str = "*") -> None:
+        subs = self._subscribers.get(channel)
         if not subs:
             return
 

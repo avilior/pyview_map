@@ -4,7 +4,7 @@ from pyview.template.live_view_template import live_component
 
 from .sources.api_marker_source import marker_source, MarkerSource
 from .sources.api_polyline_source import polyline_source
-from .sources.command_queue import CommandQueue
+from .sources.command_queue import command_queue
 from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
@@ -69,7 +69,7 @@ class MapDriver:
 
     def connect(self):
         """Subscribe to CommandQueue. Call when socket.connected."""
-        self._cmd_queue = CommandQueue.subscribe(channel=self._channel, cid=self._cid)
+        self._cmd_queue = command_queue.subscribe(self._channel, self._cid)
 
     async def tick(self, socket):
         """Drain sources + command queue. Push commands via socket. Call from handle_info("tick")."""

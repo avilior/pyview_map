@@ -1,6 +1,4 @@
 from pyview_map.views.components.shared.fan_out_queue import FanOutQueue
+from pyview_map.views.components.dynamic_map.models.map_events import MapCommand
 
-
-class CommandQueue(FanOutQueue):
-    """Fan-out queue for map commands from external clients."""
-    pass
+command_queue: FanOutQueue[MapCommand] = FanOutQueue()

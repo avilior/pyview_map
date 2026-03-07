@@ -1,7 +1,7 @@
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 
 from pyview_map.views.components.dynamic_list.sources.api_list_source import list_source
-from pyview_map.views.components.dynamic_list.sources.list_command_queue import ListCommandQueue
+from pyview_map.views.components.dynamic_list.sources.list_command_queue import list_command_queue
 from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
 from pyview_map.views.components.dynamic_list.models.list_events import HighlightListItemCmd, ListItemOpEvent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
@@ -34,7 +34,7 @@ def list_clear(channel: str, cid: str = "*") -> dict:
 
 @jrpc_service.request("list.highlight")
 def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
-    ListCommandQueue.push(HighlightListItemCmd(id=id), channel=channel, cid=cid)
+    list_command_queue.push(HighlightListItemCmd(id=id), channel=channel, cid=cid)
     return {"ok": True}
 
 

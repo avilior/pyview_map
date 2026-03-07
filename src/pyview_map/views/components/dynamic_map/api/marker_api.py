@@ -7,7 +7,7 @@ from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.views.components.dynamic_map.sources.api_marker_source import marker_source
 from pyview_map.views.components.dynamic_map.sources.api_polyline_source import polyline_source
-from pyview_map.views.components.dynamic_map.sources.command_queue import CommandQueue
+from pyview_map.views.components.dynamic_map.sources.command_queue import command_queue
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
 from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
@@ -88,67 +88,67 @@ async def map_events_subscribe() -> asyncio.Queue:
 
 @jrpc_service.request("map.setView")
 def map_set_view(latLng: list[float], zoom: int, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(SetViewCmd(latLng=LatLng.from_list(latLng), zoom=zoom), channel=channel, cid=cid)
+    command_queue.push(SetViewCmd(latLng=LatLng.from_list(latLng), zoom=zoom), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.panTo")
 def map_pan_to(latLng: list[float], channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(PanToCmd(latLng=LatLng.from_list(latLng)), channel=channel, cid=cid)
+    command_queue.push(PanToCmd(latLng=LatLng.from_list(latLng)), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.flyTo")
 def map_fly_to(latLng: list[float], zoom: int, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(FlyToCmd(latLng=LatLng.from_list(latLng), zoom=zoom), channel=channel, cid=cid)
+    command_queue.push(FlyToCmd(latLng=LatLng.from_list(latLng), zoom=zoom), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.fitBounds")
 def map_fit_bounds(corner1: list[float], corner2: list[float], channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(FitBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), channel=channel, cid=cid)
+    command_queue.push(FitBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.flyToBounds")
 def map_fly_to_bounds(corner1: list[float], corner2: list[float], channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(FlyToBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), channel=channel, cid=cid)
+    command_queue.push(FlyToBoundsCmd(corner1=LatLng.from_list(corner1), corner2=LatLng.from_list(corner2)), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.setZoom")
 def map_set_zoom(zoom: int, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(SetZoomCmd(zoom=zoom), channel=channel, cid=cid)
+    command_queue.push(SetZoomCmd(zoom=zoom), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.resetView")
 def map_reset_view(channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(ResetViewCmd(), channel=channel, cid=cid)
+    command_queue.push(ResetViewCmd(), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.highlightMarker")
 def map_highlight_marker(id: str, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(HighlightMarkerCmd(id=id), channel=channel, cid=cid)
+    command_queue.push(HighlightMarkerCmd(id=id), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.highlightPolyline")
 def map_highlight_polyline(id: str, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(HighlightPolylineCmd(id=id), channel=channel, cid=cid)
+    command_queue.push(HighlightPolylineCmd(id=id), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.followMarker")
 def map_follow_marker(id: str, channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(FollowMarkerCmd(id=id), channel=channel, cid=cid)
+    command_queue.push(FollowMarkerCmd(id=id), channel=channel, cid=cid)
     return {"ok": True}
 
 
 @jrpc_service.request("map.unfollowMarker")
 def map_unfollow_marker(channel: str, cid: str = "*") -> dict:
-    CommandQueue.push(UnfollowMarkerCmd(), channel=channel, cid=cid)
+    command_queue.push(UnfollowMarkerCmd(), channel=channel, cid=cid)
     return {"ok": True}
 
 

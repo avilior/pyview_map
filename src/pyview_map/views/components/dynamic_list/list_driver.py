@@ -3,7 +3,7 @@ import asyncio
 from pyview.template.live_view_template import live_component
 
 from .sources.api_list_source import list_source
-from .sources.list_command_queue import ListCommandQueue
+from .sources.list_command_queue import list_command_queue
 from .dynamic_list import DynamicListComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.cid import next_cid
@@ -56,7 +56,7 @@ class ListDriver:
 
     def connect(self):
         """Subscribe to ListCommandQueue. Call when socket.connected."""
-        self._cmd_queue = ListCommandQueue.subscribe(channel=self._channel, cid=self._cid)
+        self._cmd_queue = list_command_queue.subscribe(self._channel, self._cid)
 
     async def tick(self, socket):
         """Drain list source + command queue. Push commands via socket. Call from handle_info("tick")."""
