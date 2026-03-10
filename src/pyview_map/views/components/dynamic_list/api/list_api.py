@@ -6,6 +6,8 @@ from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
 from pyview_map.views.components.dynamic_list.models.list_events import HighlightListItemCmd, ListItemOpEvent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 
+import asyncio
+
 
 @jrpc_service.request("list.add")
 def list_add(
@@ -41,3 +43,8 @@ def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
 @jrpc_service.request("list.list")
 def list_list(channel: str) -> dict:
     return {"items": [{"id": item.id, "label": item.label, "subtitle": item.subtitle} for item in list_source.channel_items(channel).values()]}
+
+@jrpc_service.request("list.events.subscribe")
+async def map_events_subscribe() -> asyncio.Queue:
+    return EventBroadcaster.subscribe()
+
