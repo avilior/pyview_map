@@ -18,6 +18,7 @@ Server starts at `http://localhost:8123`.  Available routes:
 | `/dmap` | Dynamic marker map             |
 | `/mmap` | Multi-map dashboard (2×)       |
 | `/map_list_demo` | Map + list demo (2 components) |
+| `/places_demo` | Places list + map (external parks service) |
 
 ## Project layout
 
@@ -75,11 +76,16 @@ src/pyview_map/
     │   └── dynamic_map_demo.py   # DynamicMapLiveView — hosts DynamicMapComponent
     ├── multimaps_demo/      # /mmap — multi-map dashboard (2×)
     │   └── multimaps_demo.py     # MultiMapLiveView — hosts N DynamicMapComponent instances
-    └── map_list_demo/       # /map_list_demo — map + list side by side
-        └── map_list_demo.py      # DemoLiveView — hosts DynamicMapComponent + DynamicListComponent
+    ├── map_list_demo/       # /map_list_demo — map + list side by side
+    │   └── map_list_demo.py      # DemoLiveView — hosts DynamicMapComponent + DynamicListComponent
+    └── places_demo/         # /places_demo — places list + map
+        └── places_demo.py        # PlacesView — hosts ListDriver + MapDriver
 examples/
 ├── mock_client.py               # Reference external client — drives /dmap via ClientRPC (MCP)
 ├── map_list_demo.py             # Coordinator for /map_list_demo — syncs map viewport to list, click→highlight
+├── list/
+│   ├── parks.py                 # National parks data (NationalPark TypedDict)
+│   └── parks_service.py         # External client — populates /places_demo list, listens for click events
 └── planes/
     └── mock_planes.py           # Flight simulation — airports, polyline route, followMarker
 ```
@@ -449,6 +455,7 @@ Clients must complete the MCP lifecycle before calling methods:
 | `list.clear` | `channel`, `cid?` | Remove all items |
 | `list.highlight` | `id`, `channel`, `cid?` | Push highlight command (scroll + flash) |
 | `list.list` | `channel` | Return current items for channel |
+| `list.events.subscribe` | — | Returns `asyncio.Queue` → SSE stream of list events |
 
 #### Map command methods
 
