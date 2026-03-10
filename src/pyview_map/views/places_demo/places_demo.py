@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pyview.template import TemplateView
 from pyview import LiveView, LiveViewSocket, ConnectedLiveViewSocket
+from pyview.live_view import Session
 from pyview.events import InfoEvent
 from pyview_map.views.components.dynamic_list import ListDriver
 from pyview_map.views.components.dynamic_map import MapDriver
@@ -22,27 +23,19 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
     base_channel: str = "places"
     tick_interval: float = 1.2
 
-    async def mount(self, socket: LiveViewSocket[PlacesViewContext], session):
-        # this is called twice...once when we mount the page and the other when we acctually connect to the page.
-        # this is instantiated twice once when we mount the page using an unconnected socket and the other when we have a connected socket
+    async def mount(self, socket: LiveViewSocket[PlacesViewContext], session: Session):
+        # PyView creates a separate LiveView instance for each phase:
+        #   1. HTTP render — new instance + UnconnectedSocket → static HTML, then discarded
+        #   2. WebSocket  — new instance + ConnectedLiveViewSocket → long-lived session
+        # Drivers and subscriptions only matter on the connected instance.
 
-        # QUESTION: what do we do when this is called before the socket is connected???
-        # NOTE moved into the connected socket part because we were initing twice. Didn't work so testing to make sure it is not none
-
-        # if not hasattr(self, '_list_component'):
         self._list_component = ListDriver(f"{self.base_channel}-list")
-
-        # if not hasattr(self, '_map_component'):
         self._map_component = MapDriver(f"{self.base_channel}-map")
-
         socket.context = PlacesViewContext()
-        # Socket can be UnconnectedSocket or ConnectedLiveViewSocket...here we test for connectedness.
-        if socket.connected:
 
-            LOG.info(f"PlacesView connected to channel: {self.base_channel}")
+        if socket.connected:
             self._list_component.connect()
             self._map_component.connect()
-
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[PlacesViewContext]):

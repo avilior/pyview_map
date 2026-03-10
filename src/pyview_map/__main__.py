@@ -56,5 +56,6 @@ if __name__ == "__main__":
         format="%(asctime)s[%(levelname)s] @%(module)s|%(name)s|%(funcName)s|%(lineno)d # %(message)s",
         datefmt="%y%m%d %H:%M:%S",
     )
+    logging.getLogger("apscheduler.executors").setLevel(logging.WARNING)
 
     main()

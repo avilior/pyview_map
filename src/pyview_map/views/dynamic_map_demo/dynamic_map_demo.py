@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
+from pyview.live_view import Session
 from pyview.events import InfoEvent
 from pyview.meta import PyViewMeta
 from pyview.template import TemplateView
@@ -59,9 +60,15 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
             },
         )
 
-    async def mount(self, socket: LiveViewSocket[DynamicMapPageContext], session):
+    async def mount(self, socket: LiveViewSocket[DynamicMapPageContext], session: Session):
+        # PyView creates a separate LiveView instance for each phase:
+        #   1. HTTP render — new instance + UnconnectedSocket → static HTML, then discarded
+        #   2. WebSocket  — new instance + ConnectedLiveViewSocket → long-lived session
+        # Drivers and subscriptions only matter on the connected instance.
+
         self._map = MapDriver(self._channel, source_class=self.source_class, source_kwargs=self._source_kwargs or None)
         socket.context = DynamicMapPageContext()
+
         if socket.connected:
             self._map.connect()
             socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)

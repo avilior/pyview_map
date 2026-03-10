@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
+from pyview.live_view import Session
 from pyview.events import InfoEvent
 from pyview.meta import PyViewMeta
 from pyview.template import TemplateView
@@ -23,10 +24,16 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
 
     tick_interval: float = 1.2
 
-    async def mount(self, socket: LiveViewSocket[DemoPageContext], session):
+    async def mount(self, socket: LiveViewSocket[DemoPageContext], session: Session):
+        # PyView creates a separate LiveView instance for each phase:
+        #   1. HTTP render — new instance + UnconnectedSocket → static HTML, then discarded
+        #   2. WebSocket  — new instance + ConnectedLiveViewSocket → long-lived session
+        # Drivers and subscriptions only matter on the connected instance.
+
         self._map = MapDriver("map_list_demo-map")
         self._list = ListDriver("map_list_demo-list")
         socket.context = DemoPageContext()
+
         if socket.connected:
             self._map.connect()
             self._list.connect()
