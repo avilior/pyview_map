@@ -9,6 +9,10 @@ from pyview.template import TemplateView
 from pyview_map.views.components.dynamic_map import MapDriver
 from pyview_map.views.components.dynamic_list import ListDriver
 
+import logging
+
+LOG = logging.getLogger(__name__)
+
 
 @dataclass
 class DemoPageContext:
@@ -51,6 +55,9 @@ class DemoLiveView(TemplateView, LiveView[DemoPageContext]):
         summary = self._map.handle_event(event, payload) or self._list.handle_event(event, payload)
         if summary:
             socket.context.last_event = summary
+
+    async def disconnect(self, socket: ConnectedLiveViewSocket[DemoPageContext]):
+        LOG.info("disconnecting")
 
     def template(self, assigns: DemoPageContext, meta: PyViewMeta):
         last_event = assigns.last_event

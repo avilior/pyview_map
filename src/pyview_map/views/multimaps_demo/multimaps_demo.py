@@ -8,6 +8,10 @@ from pyview.template import TemplateView
 
 from pyview_map.views.components.dynamic_map import MapDriver
 
+import logging
+
+LOG = logging.getLogger(__name__)
+
 
 @dataclass
 class MultiMapPageContext:
@@ -88,6 +92,9 @@ class MultiMapLiveView(TemplateView, LiveView[MultiMapPageContext]):
                 elif event == "map-event":
                     socket.context.last_map_event = summary
                 break
+
+    async def disconnect(self, socket: ConnectedLiveViewSocket[MultiMapPageContext]):
+        LOG.info("disconnecting")
 
     def template(self, assigns: MultiMapPageContext, meta: PyViewMeta):
         last_me = assigns.last_marker_event

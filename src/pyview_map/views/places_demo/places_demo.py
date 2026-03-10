@@ -55,6 +55,10 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         if summary:
             socket.context.last_event = summary
 
+    async def disconnect(self, socket: ConnectedLiveViewSocket[PlacesViewContext]):
+      # custom cleanup here
+      LOG.info("disconnecting")
+
     def template(self, assigns: PlacesViewContext, meta: PyViewMeta):
 
         last_event = assigns.last_event

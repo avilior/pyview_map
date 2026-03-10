@@ -8,6 +8,10 @@ from pyview.template import TemplateView
 
 from pyview_map.views.components.dynamic_map import MapDriver
 
+import logging
+
+LOG = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Parent LiveView — drives ticks, drains sources, embeds map component
 # ---------------------------------------------------------------------------
@@ -88,6 +92,9 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
                 socket.context.last_polyline_event = summary
             elif event == "map-event":
                 socket.context.last_map_event = summary
+
+    async def disconnect(self, socket: ConnectedLiveViewSocket[DynamicMapPageContext]):
+        LOG.info("disconnecting")
 
     def template(self, assigns: DynamicMapPageContext, meta: PyViewMeta):
         last_me = assigns.last_marker_event
