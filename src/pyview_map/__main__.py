@@ -40,7 +40,6 @@ async def _patched_send_info(self, event):
 
 _live_socket.ConnectedLiveViewSocket.send_info = _patched_send_info
 
-from pyview_map.views.park_map_demo.park_map_demo import MapLiveView
 from pyview_map.views.dynamic_map_demo import DynamicMapLiveView
 from pyview_map.views.multimaps_demo import MultiMapLiveView
 from pyview_map.views.places_demo import PlacesView
@@ -71,7 +70,6 @@ LOG = logging.getLogger(__name__)
 
 def main():
 
-    LOG.info("Starting Park Map server on http://localhost:8123/map")
     LOG.info("Dynamic Map available at    http://localhost:8123/dmap")
     LOG.info("Multi-Map available at      http://localhost:8123/mmap")
     LOG.info("Map + List demo at          http://localhost:8123/map_list_demo")
@@ -79,7 +77,6 @@ def main():
     LOG.info("Places Demo              http://localhost:8123/places_demo")
     LOG.info("Image List Demo          http://localhost:8123/image_list")
 
-    app.add_live_view("/map", MapLiveView)
     app.add_live_view("/dmap", DynamicMapLiveView.with_source(channel="dmap"))
     app.add_live_view("/mmap", MultiMapLiveView.with_maps(channels=["left", "right"]))
     app.add_live_view("/map_list_demo", DemoLiveView)

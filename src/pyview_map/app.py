@@ -11,7 +11,6 @@ app.mount(
     StaticFiles(
         packages=[
             ("pyview", "static"),
-            ("pyview_map.views.park_map_demo", "static"),
             ("pyview_map.views.components.dynamic_map", "static"),
             ("pyview_map.views.components.dynamic_list", "static"),
         ]
@@ -54,7 +53,7 @@ css = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/nprogress@0.2.0/nprogress.css" />
 
-<!-- Leaflet CSS + JS for park_map_demo example -->
+<!-- Leaflet CSS + JS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
@@ -64,7 +63,6 @@ css = """
 
 <script src="https://unpkg.com/@joergdietrich/leaflet.terminator@1.0.0/L.Terminator.js"></script>
 <script src="https://unpkg.com/leaflet.repeatedmarkers@latest/Leaflet.RepeatedMarkers.js"></script>
-<script defer type="text/javascript" src="/static/map.js"></script>
 <script defer type="text/javascript" src="/static/dynamic_map.js"></script>
 <script defer type="text/javascript" src="/static/dynamic_list.js"></script>
 """

@@ -108,9 +108,27 @@ const _FALLBACK_ICON_DEF = {
 
 // Build a DivIcon, optionally baking heading rotation into the HTML so that
 // copies created by Leaflet.RepeatedMarkers inherit the transform.
+//
+// If iconName is found in the registry, use that definition.
+// Otherwise treat iconName as literal HTML/emoji content (e.g. "🌋", "<svg>…</svg>")
+// and wrap it in a centered div.
 function _makeIcon(instance, iconName, heading) {
   const reg = instance.getIconRegistry();
-  const def = reg[iconName] || reg["default"] || _FALLBACK_ICON_DEF;
+  const regEntry = reg[iconName];
+  let def;
+  if (regEntry) {
+    def = regEntry;
+  } else if (iconName && iconName !== "default") {
+    // Literal icon content — wrap in a centered container
+    def = {
+      html: `<div style="display:flex;align-items:center;justify-content:center;font-size:20px;width:28px;height:28px">${iconName}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      className: "",
+    };
+  } else {
+    def = reg["default"] || _FALLBACK_ICON_DEF;
+  }
   let html = def.html;
   if (heading != null && heading !== "" && heading !== "None") {
     html = `<div style="transform:rotate(${heading}deg);transform-origin:center center;transition:transform 0.3s ease">${html}</div>`;

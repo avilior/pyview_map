@@ -66,10 +66,8 @@ async def event_listener(rpc: ClientRPC):
                                 target_map_channel = "places-map"
                                 target_map_cid = "*"  # send to all maps on the channel
                                 # create the marker for the park
-                                #TODO add icon types that are literal as opposed to located in a registry
-
                                 try:
-                                    park_marker = DMarker(id=np.name,name=np.name, lat_lng=np.lat_lng, icon="default", heading=None, speed=None)
+                                    park_marker = DMarker(id=np.name, name=np.name, lat_lng=np.lat_lng, icon=np.icon)
                                     params = park_marker.to_dict()
                                     params["channel"] = target_map_channel
                                     print(f"adding marker to map: {params}")
