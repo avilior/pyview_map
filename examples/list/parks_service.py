@@ -118,12 +118,13 @@ async def main():
             #     cid: str = "*",     the component instance id a '*' means braodcast to all instances on the channel
 
             # A list item is modeled using a DListItem class which is defined in pyview_map.views.components.dynamic_list.models.dlist_item
-            list_item = DListItem(id=np.name, label=np.name, subtitle=np.description)
+            list_item = DListItem(id=np.name, label=np.name, subtitle=np.description, data={"icon": np.icon})
             list_channel = "places-list" # found by looking at the places_demo file.  The base name of the application and the list component name
 
             params = {"id": list_item.id,
                       "label": list_item.label,
                       "subtitle": list_item.subtitle,
+                      "data": list_item.data,
                       "channel": list_channel}
 
             add_request = JSONRPCRequest(method="list.add", params=params)

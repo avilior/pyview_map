@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket
 from pyview.components import LiveComponent
@@ -14,6 +14,16 @@ from .models.dlist_item import DListItem
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from .models.list_events import ListItemClickEvent
 
+# Type alias for item renderers.
+# A renderer receives a DListItem and returns the inner content (t-string).
+# The component wraps this in the clickable container div.
+ItemRenderer = Callable[[DListItem], Any]
+
+
+def default_item_renderer(item: DListItem) -> Any:
+    """Default renderer: label + subtitle."""
+    return t'<div class="font-medium text-sm text-gray-800">{item.label}</div><div class="text-xs text-gray-500">{item.subtitle}</div>'
+
 
 # ---------------------------------------------------------------------------
 # DynamicListComponent — renders a scrollable list with stream items
@@ -23,6 +33,7 @@ from .models.list_events import ListItemClickEvent
 class DynamicListComponentContext:
     items: Stream[DListItem]
     channel: str
+    _item_renderer: ItemRenderer = field(default=default_item_renderer)
     _last_version: int = 0
 
 
@@ -37,6 +48,7 @@ def _apply_list_ops(items: Stream[DListItem], ops: list[dict], *, stream_name: s
                     id=op_dict["id"],
                     label=op_dict["label"],
                     subtitle=op_dict.get("subtitle", ""),
+                    data=op_dict.get("data", {}),
                 ),
                 at=at,
             )
@@ -58,9 +70,11 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
     async def mount(self, socket: ComponentSocket[DynamicListComponentContext], assigns: dict[str, Any]) -> None:
         channel = assigns.get("channel", "dlist")
         initial_items = assigns.get("initial_items", [])
+        item_renderer = assigns.get("item_renderer", default_item_renderer)
         socket.context = DynamicListComponentContext(
             items=Stream(initial_items, name=f"{channel}-list-items"),
             channel=channel,
+            _item_renderer=item_renderer,
         )
 
     async def update(self, socket: ComponentSocket[DynamicListComponentContext], assigns: dict[str, Any]) -> None:
@@ -83,9 +97,10 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
     def template(self, assigns: DynamicListComponentContext, meta: ComponentMeta):
         channel = assigns.channel
         items_id = f"{channel}-list-items"
+        renderer = assigns._item_renderer
 
         items_html = stream_for(assigns.items, lambda dom_id, item:
-            t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-target="{meta.myself}" phx-value-id="{item.id}" phx-value-label="{item.label}"><div class="font-medium text-sm text-gray-800">{item.label}</div><div class="text-xs text-gray-500">{item.subtitle}</div></div>'
+            t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-target="{meta.myself}" phx-value-id="{item.id}" phx-value-label="{item.label}">{renderer(item)}</div>'
         )
 
         return t"""<div data-channel="{channel}">

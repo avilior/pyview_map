@@ -13,9 +13,11 @@ import asyncio
 def list_add(
     id: str, label: str, channel: str,
     subtitle: str = "", at: int = -1, cid: str = "*",
+    data: dict | None = None,
 ) -> dict:
-    item = DListItem(id=id, label=label, subtitle=subtitle)
-    list_source.push_op({"op": "add", "id": id, "label": label, "subtitle": subtitle, "at": at}, channel=channel, cid=cid, item=item)
+    item_data = data or {}
+    item = DListItem(id=id, label=label, subtitle=subtitle, data=item_data)
+    list_source.push_op({"op": "add", "id": id, "label": label, "subtitle": subtitle, "at": at, "data": item_data}, channel=channel, cid=cid, item=item)
     EventBroadcaster.broadcast(ListItemOpEvent(op="add", id=id, label=label, subtitle=subtitle, at=at, channel=channel, cid=cid))
     return {"ok": True}
 
@@ -42,7 +44,7 @@ def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
 
 @jrpc_service.request("list.list")
 def list_list(channel: str) -> dict:
-    return {"items": [{"id": item.id, "label": item.label, "subtitle": item.subtitle} for item in list_source.channel_items(channel).values()]}
+    return {"items": [{"id": item.id, "label": item.label, "subtitle": item.subtitle, "data": item.data} for item in list_source.channel_items(channel).values()]}
 
 @jrpc_service.request("list.events.subscribe")
 async def map_events_subscribe() -> asyncio.Queue:

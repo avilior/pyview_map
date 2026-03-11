@@ -36,6 +36,8 @@ exclude = [
     "src/pyview_map/views/dynamic_map_demo/dynamic_map_demo.py",
     "src/pyview_map/views/multimaps_demo/multimaps_demo.py",
     "src/pyview_map/views/map_list_demo/map_list_demo.py",
+    "src/pyview_map/views/image_list_demo/image_list_demo.py",
+    "src/pyview_map/views/places_demo/places_demo.py",
 ]
 
 [tool.ruff.format]

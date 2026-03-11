@@ -4,7 +4,7 @@ from pyview.template.live_view_template import live_component
 
 from .sources.api_list_source import list_source
 from .sources.list_command_queue import list_command_queue
-from .dynamic_list import DynamicListComponent
+from .dynamic_list import DynamicListComponent, ItemRenderer, default_item_renderer
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.cid import next_cid
 from .models.list_events import ListItemClickEvent
@@ -40,8 +40,9 @@ class ListDriver:
                 return t'<div>{self._list.render()}</div>'
     """
 
-    def __init__(self, channel: str):
+    def __init__(self, channel: str, item_renderer: ItemRenderer = default_item_renderer):
         self._channel = channel
+        self._item_renderer = item_renderer
         self._cid = next_cid()
         self._list_reader = list_source.subscribe(channel, self._cid)
         self._initial_items = self._list_reader.items
@@ -106,4 +107,5 @@ class ListDriver:
             list_ops=self._list_ops,
             ops_version=self._ops_version,
             channel=self._channel,
+            item_renderer=self._item_renderer,
         )

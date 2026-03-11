@@ -4,6 +4,7 @@ from pyview import LiveView, LiveViewSocket, ConnectedLiveViewSocket
 from pyview.live_view import Session
 from pyview.events import InfoEvent
 from pyview_map.views.components.dynamic_list import ListDriver
+from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
 from pyview_map.views.components.dynamic_map import MapDriver
 
 from pyview.meta import PyViewMeta
@@ -11,6 +12,12 @@ from pyview.meta import PyViewMeta
 import logging
 
 LOG = logging.getLogger(__name__)
+
+
+def parks_item_renderer(item: DListItem):
+    """Render a park list item with its emoji icon."""
+    icon = item.data.get("icon", "")
+    return t'<div class="flex items-center gap-2"><span class="text-lg">{icon}</span><div><div class="font-medium text-sm text-gray-800">{item.label}</div><div class="text-xs text-gray-500">{item.subtitle}</div></div></div>'
 
 
 @dataclass
@@ -29,7 +36,7 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         #   2. WebSocket  — new instance + ConnectedLiveViewSocket → long-lived session
         # Drivers and subscriptions only matter on the connected instance.
 
-        self._list_component = ListDriver(f"{self.base_channel}-list")
+        self._list_component = ListDriver(f"{self.base_channel}-list", item_renderer=parks_item_renderer)
         self._map_component = MapDriver(f"{self.base_channel}-map")
         socket.context = PlacesViewContext()
 
