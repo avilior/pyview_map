@@ -44,6 +44,7 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
             return
 
         await self._list_component.tick(socket)
+        await self._map_component.tick(socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[PlacesViewContext]):
         self._list_component.clear_ops()
