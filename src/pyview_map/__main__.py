@@ -4,6 +4,7 @@
 import json
 import uvicorn
 
+# Fixed with 0.9.0a4 issue 141
 # ---------------------------------------------------------------------------
 # Monkey-patch: pyview's send_info() doesn't flush pending push_events
 # (they only get sent after handle_event, not handle_info). This means
@@ -11,34 +12,34 @@ import uvicorn
 # Patch send_info to include pending_events in the diff payload.
 # Remove this once pyview-web is fixed upstream.
 # ---------------------------------------------------------------------------
-import pyview.live_socket as _live_socket
-
-_original_send_info = _live_socket.ConnectedLiveViewSocket.send_info
-
-
-async def _patched_send_info(self, event):
-    await self.liveview.handle_info(event, self)
-
-    rendered = await self.render_with_components()
-    diff = self.diff(rendered)
-
-    if self.pending_events:
-        diff["e"] = self.pending_events
-        self.pending_events = []
-
-    resp = [None, None, self.topic, "diff", diff]
-
-    try:
-        await self.websocket.send_text(json.dumps(resp))
-    except Exception:
-        for id in list(self.scheduled_jobs):
-            try:
-                self.scheduler.remove_job(id)
-            except Exception:
-                pass
-
-
-_live_socket.ConnectedLiveViewSocket.send_info = _patched_send_info
+# import pyview.live_socket as _live_socket
+#
+# _original_send_info = _live_socket.ConnectedLiveViewSocket.send_info
+#
+#
+# async def _patched_send_info(self, event):
+#     await self.liveview.handle_info(event, self)
+#
+#     rendered = await self.render_with_components()
+#     diff = self.diff(rendered)
+#
+#     if self.pending_events:
+#         diff["e"] = self.pending_events
+#         self.pending_events = []
+#
+#     resp = [None, None, self.topic, "diff", diff]
+#
+#     try:
+#         await self.websocket.send_text(json.dumps(resp))
+#     except Exception:
+#         for id in list(self.scheduled_jobs):
+#             try:
+#                 self.scheduler.remove_job(id)
+#             except Exception:
+#                 pass
+#
+#
+# _live_socket.ConnectedLiveViewSocket.send_info = _patched_send_info
 
 from pyview_map.views.dynamic_map_demo import DynamicMapLiveView
 from pyview_map.views.multimaps_demo import MultiMapLiveView
