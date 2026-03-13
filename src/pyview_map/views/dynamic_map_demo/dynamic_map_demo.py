@@ -13,7 +13,7 @@ import logging
 LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Parent LiveView — drives ticks, drains sources, embeds map component
+# Parent LiveView — drives PubSub-based updates, embeds map component
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -35,9 +35,10 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
 
     The view handles:
       - Initial marker render via Stream (inside DynamicMapComponent)
-      - Periodic ticks (schedule_info) that drain sources and pass ops to component
+      - PubSub-driven updates for API-sourced data (no tick needed)
+      - Tick polling for custom MarkerSource classes (e.g. MockGenerator)
       - Marker and map events from Leaflet forwarded to handle_event
-      - Map commands from CommandQueue pushed via socket.push_event
+      - Map commands from PubSub pushed via socket.push_event
     """
 
     # Set by with_source(); subclasses can also set these as class attributes.
@@ -50,8 +51,8 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
     def with_source(cls, source_class: type | None = None, *, channel: str = "dmap", tick_interval: float = 1.2, **source_kwargs):
         """Return a configured DynamicMapLiveView class bound to source_class.
 
-        If source_class is None (default), MapDriver uses the module-level
-        marker_source fan-out instance.
+        If source_class is None (default), MapDriver uses PubSub for data
+        delivery from the JSON-RPC API.
         """
         return type(
             "DynamicMapLiveView",
@@ -65,22 +66,20 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
         )
 
     async def mount(self, socket: LiveViewSocket[DynamicMapPageContext], session: Session):
-        # PyView creates a separate LiveView instance for each phase:
-        #   1. HTTP render — new instance + UnconnectedSocket → static HTML, then discarded
-        #   2. WebSocket  — new instance + ConnectedLiveViewSocket → long-lived session
-        # Drivers and subscriptions only matter on the connected instance.
-
         self._map = MapDriver(self._channel, source_class=self.source_class, source_kwargs=self._source_kwargs or None)
         socket.context = DynamicMapPageContext()
 
         if socket.connected:
-            self._map.connect()
-            socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
+            await self._map.connect(socket)
+            if self.source_class is not None:
+                # Source-based: need tick for polling the MarkerSource
+                socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicMapPageContext]):
-        if event.name != "tick":
+        if event.name == "tick":
+            await self._map.tick(socket)
             return
-        await self._map.tick(socket)
+        await self._map.handle_info(event, socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapPageContext]):
         self._map.clear_ops()

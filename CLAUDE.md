@@ -31,7 +31,9 @@ src/pyview_map/
     │   ├── shared/                  # Cross-component utilities
     │   │   ├── cid.py                # next_cid() — monotonic counter for channel instance IDs
     │   │   ├── latlng.py             # LatLng dataclass — replaces raw [lat, lng] lists
-    │   │   └── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
+    │   │   ├── event_broadcaster.py  # EventBroadcaster — fans out events to SSE subscribers
+    │   │   ├── item_store.py         # ItemStore[T] — channel-partitioned state store
+    │   │   └── topics.py             # PubSub topic naming functions
     │   ├── dynamic_map/             # Real-time streaming Leaflet map component
     │   │   ├── dynamic_map_component.py  # DynamicMapComponent (LiveComponent) + MarkerSource protocol
     │   │   ├── map_driver.py          # MapDriver — encapsulates parent-side plumbing for hosting a map
@@ -41,10 +43,9 @@ src/pyview_map/
     │   │   │   ├── dmarker.py         # DMarker dataclass (uses LatLng)
     │   │   │   ├── dpolyline.py       # DPolyline dataclass (uses LatLng)
     │   │   │   └── map_events.py      # Typed event/command dataclasses + parse_event()
-    │   │   ├── sources/              # Data providers + fan-out queues
-    │   │   │   ├── api_marker_source.py  # APIMarkerSource — fan-out queues with channel/cid routing
-    │   │   │   ├── api_polyline_source.py # APIPolylineSource — same fan-out + channel/cid routing
-    │   │   │   ├── command_queue.py      # CommandQueue — fan-out queue for map commands
+    │   │   ├── sources/              # Data providers + state stores
+    │   │   │   ├── api_marker_source.py  # marker_store (ItemStore) + MarkerSource protocol
+    │   │   │   ├── api_polyline_source.py # polyline_store (ItemStore)
     │   │   │   └── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
     │   │   ├── api/                  # JRPC methods + FastAPI sub-app
     │   │   │   └── marker_api.py      # JRPCService methods + mcp_router at /api/mcp
@@ -58,9 +59,8 @@ src/pyview_map/
     │       ├── models/               # Data types + events
     │       │   ├── dlist_item.py      # DListItem dataclass
     │       │   └── list_events.py     # ListItemOpEvent, ListItemClickEvent, HighlightListItemCmd
-    │       ├── sources/              # Data providers + fan-out queues
-    │       │   ├── api_list_source.py  # APIListSource — fan-out source for list items
-    │       │   └── list_command_queue.py # ListCommandQueue — fan-out queue for list commands
+    │       ├── sources/              # Data providers + state stores
+    │       │   └── api_list_source.py  # list_store (ItemStore)
     │       ├── api/                  # JRPC methods
     │       │   └── list_api.py        # JRPC methods registered on global jrpc_service
     │       └── static/
@@ -198,15 +198,14 @@ The dynamic map uses a **LiveComponent** + **Driver** architecture:
 ```
 DynamicMapLiveView (TemplateView + LiveView)
 ├── owns MapDriver (encapsulates all plumbing)
-├── owns schedule_info("tick") — drives all updates
-├── mount: creates MapDriver, calls driver.connect()
-├── handle_info("tick"): calls driver.tick(socket)
+├── mount: creates MapDriver, calls await driver.connect(socket)
+├── handle_info: routes PubSub messages to driver.handle_info(event, socket)
 ├── handle_event: calls driver.clear_ops() + driver.handle_event()
 ├── template: calls driver.render() to get live_component()
 │
 └── MapDriver
-    ├── owns marker source, polyline source, command queue
-    ├── tick(): drains sources + commands, updates internal ops/version
+    ├── subscribes to PubSub topics on connect (marker-ops, polyline-ops, map-cmd)
+    ├── handle_info(): receives PubSub messages, updates ops/version, pushes commands
     ├── handle_event(): parses events, broadcasts, returns summary
     ├── render(): returns live_component(DynamicMapComponent, ...)
     │
@@ -220,14 +219,19 @@ DynamicMapLiveView (TemplateView + LiveView)
 `MultiMapLiveView` hosts N `MapDriver` instances, one per channel.
 `DemoLiveView` hosts a `MapDriver` + `ListDriver` side by side.
 
-### Data flow
+### Data flow (PubSub)
 
-1. Parent `handle_info("tick")` calls `driver.tick(socket)`
-2. Driver drains marker source, polyline source, command queue internally
-3. Driver pushes commands via `socket.push_event()`, updates internal ops/version
-4. Parent re-renders → `driver.render()` calls `live_component()` with current state
-5. Component `update()` receives ops, applies them to its own Streams (gated by version counter)
-6. Component re-renders with updated stream diffs
+1. API handler (e.g. `markers.add`) stores item in `ItemStore`, broadcasts op via `pub_sub_hub`
+2. PubSub delivers message to subscribed sockets → `handle_info(InfoEvent(topic, op))`
+3. Parent routes to `driver.handle_info()` → driver stores op, bumps `ops_version`
+4. For commands: driver calls `socket.push_event()` directly
+5. Re-render → `driver.render()` calls `live_component()` with current ops
+6. Component `update()` applies ops to Streams (gated by version counter)
+7. Component re-renders with updated stream diffs
+
+**Custom source fallback**: When `source_class` is provided (e.g. MockGenerator),
+the driver uses `schedule_info("tick")` + `tick()` polling instead of PubSub for
+marker ops. Polyline and command PubSub subscriptions still apply.
 
 ### DynamicMapComponent
 
@@ -309,14 +313,14 @@ class MyPageView(TemplateView, LiveView[MyPageContext]):
         self._list = ListDriver("my-list")
         socket.context = MyPageContext()
         if socket.connected:
-            self._map.connect()
-            self._list.connect()
-            socket.schedule_info(InfoEvent("tick"), seconds=1.2)
+            await self._map.connect(socket)
+            await self._list.connect(socket)
 
     async def handle_info(self, event, socket):
-        if event.name == "tick":
-            await self._map.tick(socket)
-            await self._list.tick(socket)
+        if await self._map.handle_info(event, socket):
+            return
+        if await self._list.handle_info(event, socket):
+            return
 
     async def handle_event(self, event, payload, socket):
         self._map.clear_ops()
@@ -329,10 +333,11 @@ class MyPageView(TemplateView, LiveView[MyPageContext]):
         return t'<div>{self._map.render()}{self._list.render()}</div>'
 ```
 
-**MapDriver source routing:**
-- Default (no `source_class`): uses `APIMarkerSource` with `channel` routing
-  — subscribes to ops targeted at the driver's channel.
+**MapDriver data delivery:**
+- Default (no `source_class`): subscribes to PubSub topics for reactive delivery.
+  No tick polling needed — data arrives immediately when API handlers broadcast.
 - Explicit `source_class`: uses the given class with `source_kwargs` as-is.
+  Needs `schedule_info("tick")` + `tick()` for polling the source.
 
 Each driver auto-generates a unique `cid` (channel instance ID) via `next_cid()`.
 The cid identifies a specific browser connection within a channel, enabling
@@ -359,14 +364,13 @@ The dynamic list follows the same **LiveComponent + Driver** pattern as the map:
 ```
 DynamicListLiveView (TemplateView + LiveView)
 ├── owns ListDriver (encapsulates all plumbing)
-├── owns schedule_info("tick") — drives all updates
-├── mount: creates ListDriver, calls driver.connect()
-├── handle_info("tick"): calls driver.tick(socket)
+├── mount: creates ListDriver, calls await driver.connect(socket)
+├── handle_info: routes PubSub messages to driver.handle_info(event, socket)
 ├── template: calls driver.render()
 │
 └── ListDriver
-    ├── owns list source, list command queue
-    ├── tick(): drains source + commands
+    ├── subscribes to PubSub topics on connect (list-ops, list-cmd)
+    ├── handle_info(): receives PubSub messages, updates ops/version, pushes commands
     ├── handle_event(): parses item-click events, broadcasts
     ├── render(): returns live_component(DynamicListComponent, ...)
     │
@@ -459,8 +463,8 @@ Clients must complete the MCP lifecycle before calling methods:
 
 #### Map command methods
 
-These let external clients control the browser's Leaflet map. Each method pushes
-a command to `CommandQueue`; the LiveView tick drains the queue and calls
+These let external clients control the browser's Leaflet map. Each method
+broadcasts a command via PubSub; the driver receives it in `handle_info()` and calls
 `socket.push_event()`, which triggers `handleEvent` in `dynamic_map.js`.
 
 | Method | Params | JS effect |
@@ -506,14 +510,16 @@ await _send(rpc, "markers.add", {"id": "m1", "name": "HQ", "latLng": [40.7, -74.
 await _send(rpc, "list.add", {"id": "item1", "label": "Item 1", "channel": "map_list_demo-list"})
 ```
 
-Internally, `APIMarkerSource`, `APIPolylineSource`, `APIListSource`, `CommandQueue`,
-and `ListCommandQueue` use `_subscribers: dict[str, dict[str, Queue]]` keyed by
-`channel → {cid → queue}`. `push(op, channel, cid="*")` fans out to all subscribers
-of the channel when `cid="*"`, or to the specific `cid` subscriber only.
+Internally, API handlers use PubSub for delivery and `ItemStore` for state:
 
-State (`_markers`, `_polylines`, `_items`) is partitioned by channel:
-`dict[str, dict[str, T]]` (channel → {id → item}). This prevents cross-channel
-data leakage between different pages/applications.
+- **PubSub topics** follow the pattern `{prefix}:{channel}` for broadcast or
+  `{prefix}:{channel}:{cid}` for targeted delivery. Topic functions are in
+  `shared/topics.py` (e.g. `marker_ops_topic()`, `map_cmd_topic()`).
+- **`ItemStore[T]`** maintains shared state partitioned by channel:
+  `dict[str, dict[str, T]]` (channel → {id → item}). Used for `*.list` query
+  methods and initial mount snapshots. No fan-out — PubSub handles delivery.
+- **Drivers** subscribe to both broadcast and targeted topics on `connect()`.
+  PubSub messages arrive as `InfoEvent(name=topic, payload=data)` in `handle_info`.
 
 #### Namespaced push_event
 
@@ -556,12 +562,12 @@ await _send(rpc, "map.unfollowMarker", {})
 await _send(rpc, "map.followMarker", {"id": "plane2"})
 ```
 
-`APIMarkerSource`, `APIPolylineSource`, `APIListSource`, `CommandQueue`, and
-`ListCommandQueue` use the **bounded-queue fan-out** pattern (same as
-`EventBroadcaster`): each LiveView instance gets its own subscriber queue; push
-methods fan out to subscribers by `channel` and `cid`; full queues are auto-discarded.
-The shared `_markers`/`_polylines`/`_items` dicts stay class-level (partitioned by
-channel) so all instances see the same state.
+Data delivery uses **PyView PubSub** (`pub_sub_hub` from `pyview.live_socket`):
+API handlers update `ItemStore` for shared state, then broadcast ops/commands
+via `pub_sub_hub.send_all_on_topic_async(topic, payload)`. Drivers subscribe
+to PubSub topics in `connect()` and process messages in `handle_info()`.
+`EventBroadcaster` is still used separately for SSE event streaming to
+external clients.
 
 ### Hook init ordering pitfall
 
@@ -633,10 +639,9 @@ Command dataclasses are defined in `map_events.py` (`SetViewCmd`, `PanToCmd`,
 `HighlightMarkerCmd`, `HighlightPolylineCmd`, `FollowMarkerCmd`, `UnfollowMarkerCmd`).
 Each has `to_push_event(*, target="") -> tuple[str, dict]`.
 
-`CommandQueue` in `command_queue.py` uses the bounded-queue fan-out pattern:
-each LiveView calls `CommandQueue.subscribe(channel, cid)` on mount and drains its
-queue on each tick. `push(cmd, channel, cid="*")` fans out to matching subscriber
-queues; full queues are auto-discarded.
+Commands are delivered via PubSub: API handlers broadcast command objects on
+`map-cmd:{channel}` (or `map-cmd:{channel}:{cid}`) topics. Drivers receive
+them in `handle_info()` and call `socket.push_event()` immediately.
 
 ## Event streaming to external clients
 

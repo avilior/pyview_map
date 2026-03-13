@@ -1,12 +1,11 @@
-import asyncio
-
+from pyview.events import InfoEvent
 from pyview.template.live_view_template import live_component
 
-from .sources.api_list_source import list_source
-from .sources.list_command_queue import list_command_queue
+from .sources.api_list_source import list_store
 from .dynamic_list import DynamicListComponent, ItemRenderer, default_item_renderer
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.cid import next_cid
+from pyview_map.views.components.shared.topics import list_ops_topic, list_cmd_topic
 from .models.list_events import ListItemClickEvent, ListReadyEvent
 
 
@@ -16,6 +15,8 @@ class ListDriver:
     Each driver instance gets a unique cid (channel instance ID) via a
     monotonic counter, shared across all its subscriptions.
 
+    Data arrives reactively via PubSub — no tick polling needed.
+
     Usage::
 
         class MyPageView(TemplateView, LiveView[MyContext]):
@@ -23,12 +24,10 @@ class ListDriver:
                 self._list = ListDriver("my-list")
                 socket.context = MyContext()
                 if socket.connected:
-                    self._list.connect()
-                    socket.schedule_info(InfoEvent("tick"), seconds=1.2)
+                    await self._list.connect(socket)
 
             async def handle_info(self, event, socket):
-                if event.name == "tick":
-                    await self._list.tick(socket)
+                await self._list.handle_info(event, socket)
 
             async def handle_event(self, event, payload, socket):
                 self._list.clear_ops()
@@ -44,44 +43,50 @@ class ListDriver:
         self._channel = channel
         self._item_renderer = item_renderer
         self._cid = next_cid()
-        self._list_reader = list_source.subscribe(channel, self._cid)
-        self._initial_items = self._list_reader.items
+        self._initial_items = list_store.all_items(channel)
         self._list_ops: list[dict] = []
         self._ops_version: int = 0
-        self._cmd_queue: asyncio.Queue | None = None
+
+        # Pre-compute PubSub topic sets for handle_info matching
+        ch = channel
+        cid = self._cid
+        self._ops_topics = {list_ops_topic(ch), list_ops_topic(ch, cid)}
+        self._cmd_topics = {list_cmd_topic(ch), list_cmd_topic(ch, cid)}
 
     @property
     def cid(self) -> str:
         """The channel instance ID for this driver."""
         return self._cid
 
-    def connect(self):
-        """Subscribe to ListCommandQueue. Call when socket.connected."""
-        self._cmd_queue = list_command_queue.subscribe(self._channel, self._cid)
+    async def connect(self, socket):
+        """Subscribe to PubSub topics. Call when socket.connected."""
+        for topic in self._ops_topics:
+            await socket.subscribe(topic)
+        for topic in self._cmd_topics:
+            await socket.subscribe(topic)
 
-    async def tick(self, socket):
-        """Drain list source + command queue. Push commands via socket. Call from handle_info("tick")."""
-        # Drain list updates
-        list_ops: list[dict] = []
-        while True:
-            update = self._list_reader.next_update()
-            if update["op"] == "noop":
-                break
-            list_ops.append(update)
+    async def handle_info(self, event: InfoEvent, socket) -> bool:
+        """Process PubSub messages. Returns True if handled.
 
-        # Drain commands → push_event
-        if self._cmd_queue is not None:
-            while True:
-                try:
-                    cmd = self._cmd_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                event_name, payload = cmd.to_push_event(target=self._channel)
-                await socket.push_event(event_name, payload)
+        Call from the parent LiveView's handle_info for each driver.
+        """
+        topic = event.name
 
-        self._list_ops = list_ops
-        if list_ops:
+        # Reset ops from previous render cycle
+        self._list_ops = []
+
+        if topic in self._ops_topics:
+            self._list_ops = [event.payload]
             self._ops_version += 1
+            return True
+
+        if topic in self._cmd_topics:
+            cmd = event.payload
+            event_name, payload = cmd.to_push_event(target=self._channel)
+            await socket.push_event(event_name, payload)
+            return True
+
+        return False
 
     def clear_ops(self):
         """Clear stale ops so component doesn't re-apply. Call at start of handle_event."""

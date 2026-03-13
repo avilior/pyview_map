@@ -1,5 +1,5 @@
 from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
-from pyview_map.views.components.shared.fan_out_source import FanOutSource
+from pyview_map.views.components.shared.item_store import ItemStore
 from typing import Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
@@ -31,4 +31,4 @@ class MarkerSource(Protocol):
         ...
 
 
-marker_source: FanOutSource[DMarker] = FanOutSource()
+marker_store: ItemStore[DMarker] = ItemStore()

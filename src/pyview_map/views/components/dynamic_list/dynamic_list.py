@@ -109,7 +109,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
 
 
 # ---------------------------------------------------------------------------
-# Parent LiveView — drives ticks, drains list source, embeds list component
+# Parent LiveView — PubSub-driven updates, embeds list component
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -125,20 +125,15 @@ class DynamicListLiveView(TemplateView, LiveView[DynamicListPageContext]):
         app.add_live_view("/list", DynamicListLiveView)
     """
 
-    tick_interval: float = 1.2
-
     async def mount(self, socket: LiveViewSocket[DynamicListPageContext], session):
         from .list_driver import ListDriver
         self._list = ListDriver(channel="dlist")
         socket.context = DynamicListPageContext()
         if socket.connected:
-            self._list.connect()
-            socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
+            await self._list.connect(socket)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicListPageContext]):
-        if event.name != "tick":
-            return
-        await self._list.tick(socket)
+        await self._list.handle_info(event, socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicListPageContext]):
         self._list.clear_ops()

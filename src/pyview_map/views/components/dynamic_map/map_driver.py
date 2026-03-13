@@ -1,79 +1,120 @@
-import asyncio
-
+from pyview.events import InfoEvent
 from pyview.template.live_view_template import live_component
 
-from .sources.api_marker_source import marker_source, MarkerSource
-from .sources.api_polyline_source import polyline_source
-from .sources.command_queue import command_queue
+from .sources.api_marker_source import marker_store, MarkerSource
+from .sources.api_polyline_source import polyline_store
 from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
 from pyview_map.views.components.shared.cid import next_cid
+from pyview_map.views.components.shared.topics import marker_ops_topic, polyline_ops_topic, map_cmd_topic
 from .models.map_events import MapEvent, MapReadyEvent, MarkerEvent, PolylineEvent
 
 
 class MapDriver:
     """Encapsulates all parent-side plumbing for hosting a DynamicMapComponent.
 
-    A page developer only needs to call connect(), tick(), clear_ops(),
+    A page developer only needs to call connect(), handle_info(), clear_ops(),
     handle_event(), and render() — no sources, queues, or ops tracking.
 
     Each driver instance gets a unique cid (channel instance ID) via a
     monotonic counter. The cid is shared across all its subscriptions
-    (marker source, polyline source, command queue) and included in
-    events so external clients can identify and target specific connections.
+    and included in events so external clients can identify and target
+    specific connections.
 
-    Source routing:
-      - Default (no source_class): subscribes to the module-level marker_source.
+    Data delivery modes:
+      - Default (no source_class): subscribes to PubSub topics for marker/polyline
+        ops and map commands. Data arrives reactively — no tick polling needed.
       - Explicit source_class: uses the given class with source_kwargs as-is.
-        The marker source may not need channel/cid (e.g. MockGenerator).
-        Polyline source and command queue always use the driver's channel and cid.
+        The source is polled via tick() (e.g. MockGenerator).
+        Polyline and command PubSub subscriptions still apply.
 
     Usage::
 
-        # Simple — default marker_source with channel routing:
+        # Simple — PubSub-driven with channel routing:
         self._map = MapDriver("my-map")
 
-        # Custom source class (e.g. MockGenerator):
+        # Custom source class (e.g. MockGenerator) — needs tick:
         self._map = MapDriver("dmap", source_class=MockGenerator, source_kwargs={"initial_count": 10})
     """
 
     def __init__(self, channel: str, *, source_class: type | None = None, source_kwargs: dict | None = None):
         self._channel = channel
         self._cid = next_cid()
+        self._has_source = source_class is not None
 
         if source_class is not None:
-            # Explicit source class — use source_kwargs as-is
+            # Explicit source class — use source_kwargs as-is, polled via tick()
             kwargs = dict(source_kwargs) if source_kwargs else {}
             self._source: MarkerSource = source_class(**kwargs)
+            self._initial_markers = self._source.items
         else:
-            # Default: subscribe to the module-level marker_source
-            self._source = marker_source.subscribe(channel, self._cid)
+            # Default: PubSub-driven, snapshot initial state from store
+            self._initial_markers = marker_store.all_items(channel)
 
-        # Polyline source and command queue always use the driver's channel and cid
-        self._polyline_reader = polyline_source.subscribe(channel, self._cid)
-
-        self._initial_markers = self._source.items
-        self._initial_polylines = self._polyline_reader.items
+        self._initial_polylines = polyline_store.all_items(channel)
         self._icon_registry_json = icon_registry.to_json()
         self._marker_ops: list[dict] = []
         self._polyline_ops: list[dict] = []
         self._ops_version: int = 0
-        self._cmd_queue: asyncio.Queue | None = None
+
+        # Pre-compute PubSub topic sets for handle_info matching
+        ch = channel
+        cid = self._cid
+        self._marker_topics = {marker_ops_topic(ch), marker_ops_topic(ch, cid)}
+        self._polyline_topics = {polyline_ops_topic(ch), polyline_ops_topic(ch, cid)}
+        self._cmd_topics = {map_cmd_topic(ch), map_cmd_topic(ch, cid)}
 
     @property
     def cid(self) -> str:
         """The channel instance ID for this driver."""
         return self._cid
 
-    def connect(self):
-        """Subscribe to CommandQueue. Call when socket.connected."""
-        self._cmd_queue = command_queue.subscribe(self._channel, self._cid)
+    async def connect(self, socket):
+        """Subscribe to PubSub topics. Call when socket.connected."""
+        if not self._has_source:
+            for topic in self._marker_topics:
+                await socket.subscribe(topic)
+        for topic in self._polyline_topics:
+            await socket.subscribe(topic)
+        for topic in self._cmd_topics:
+            await socket.subscribe(topic)
+
+    async def handle_info(self, event: InfoEvent, socket) -> bool:
+        """Process PubSub messages. Returns True if handled.
+
+        Call from the parent LiveView's handle_info for each driver.
+        """
+        topic = event.name
+
+        # Reset ops from previous render cycle
+        self._marker_ops = []
+        self._polyline_ops = []
+
+        if not self._has_source and topic in self._marker_topics:
+            self._marker_ops = [event.payload]
+            self._ops_version += 1
+            return True
+
+        if topic in self._polyline_topics:
+            self._polyline_ops = [event.payload]
+            self._ops_version += 1
+            return True
+
+        if topic in self._cmd_topics:
+            cmd = event.payload
+            event_name, payload = cmd.to_push_event(target=self._channel)
+            await socket.push_event(event_name, payload)
+            return True
+
+        return False
 
     async def tick(self, socket):
-        """Drain sources + command queue. Push commands via socket. Call from handle_info("tick")."""
-        # Drain marker updates
+        """Drain custom source. Only needed when source_class is provided."""
+        if not self._has_source:
+            return
+
         marker_ops: list[dict] = []
         while True:
             update = self._source.next_update()
@@ -81,27 +122,9 @@ class MapDriver:
                 break
             marker_ops.append(update)
 
-        # Drain polyline updates
-        polyline_ops: list[dict] = []
-        while True:
-            pl_update = self._polyline_reader.next_update()
-            if pl_update["op"] == "noop":
-                break
-            polyline_ops.append(pl_update)
-
-        # Drain commands → push_event
-        if self._cmd_queue is not None:
-            while True:
-                try:
-                    cmd = self._cmd_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                event_name, payload = cmd.to_push_event(target=self._channel)
-                await socket.push_event(event_name, payload)
-
         self._marker_ops = marker_ops
-        self._polyline_ops = polyline_ops
-        if marker_ops or polyline_ops:
+        self._polyline_ops = []
+        if marker_ops:
             self._ops_version += 1
 
     def clear_ops(self):

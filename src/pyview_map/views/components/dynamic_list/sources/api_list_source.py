@@ -1,4 +1,4 @@
 from pyview_map.views.components.dynamic_list.models.dlist_item import DListItem
-from pyview_map.views.components.shared.fan_out_source import FanOutSource
+from pyview_map.views.components.shared.item_store import ItemStore
 
-list_source: FanOutSource[DListItem] = FanOutSource()
+list_store: ItemStore[DListItem] = ItemStore()

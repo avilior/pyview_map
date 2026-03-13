@@ -36,7 +36,6 @@ class PlacesViewContext:
 class PlacesView(TemplateView, LiveView[PlacesViewContext]):
 
     base_channel: str = "places"
-    tick_interval: float = 1.2
 
     async def mount(self, socket: LiveViewSocket[PlacesViewContext], session: Session):
         self._list_component = ListDriver(f"{self.base_channel}-list", item_renderer=parks_item_renderer)
@@ -45,10 +44,9 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         socket.context = PlacesViewContext()
 
         if socket.connected:
-            self._list_component.connect()
-            self._map_component.connect()
+            await self._list_component.connect(socket)
+            await self._map_component.connect(socket)
             self._subscribe_task = asyncio.create_task(self._subscribe_to_parks())
-            socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def _subscribe_to_parks(self):
         """Open BE→BFF SSE channel via parks.subscribe.
@@ -82,10 +80,10 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
             LOG.exception("Failed to subscribe to parks from BE (%s)", PARKS_SERVICE_URL)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[PlacesViewContext]):
-        if event.name != "tick":
+        if await self._list_component.handle_info(event, socket):
             return
-        await self._list_component.tick(socket)
-        await self._map_component.tick(socket)
+        if await self._map_component.handle_info(event, socket):
+            return
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[PlacesViewContext]):
         self._list_component.clear_ops()

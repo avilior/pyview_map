@@ -1,4 +1,4 @@
 from pyview_map.views.components.dynamic_map.models.dpolyline import DPolyline
-from pyview_map.views.components.shared.fan_out_source import FanOutSource
+from pyview_map.views.components.shared.item_store import ItemStore
 
-polyline_source: FanOutSource[DPolyline] = FanOutSource()
+polyline_store: ItemStore[DPolyline] = ItemStore()
