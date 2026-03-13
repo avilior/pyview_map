@@ -41,10 +41,9 @@ import uvicorn
 #
 # _live_socket.ConnectedLiveViewSocket.send_info = _patched_send_info
 
-from pyview_map.views.dynamic_map_demo import DynamicMapLiveView
-from pyview_map.views.places_demo import PlacesView
-from pyview_map.views.components.dynamic_map.api.marker_api import api_app
-import pyview_map.views.components.dynamic_list.api.list_api  # noqa: F401 — registers JRPC methods
+from pyview_map.applications.flights_demo import FlightsView
+from pyview_map.applications.places_demo import PlacesView
+from pyview_map.api import api_app
 from pyview_map.app import app
 
 import logging
@@ -68,11 +67,11 @@ LOG = logging.getLogger(__name__)
 
 def main():
 
-    LOG.info("Dynamic Map available at    http://localhost:8123/dmap")
-    LOG.info("Marker API available at  http://localhost:8123/api/mcp")
-    LOG.info("Places Demo              http://localhost:8123/places_demo")
+    LOG.info("Flights Demo  http://localhost:8123/flights")
+    LOG.info("Places Demo   http://localhost:8123/places_demo")
+    LOG.info("Marker API    http://localhost:8123/api/mcp")
 
-    app.add_live_view("/dmap", DynamicMapLiveView.with_channel("dmap"))
+    app.add_live_view("/flights", FlightsView)
     app.add_live_view("/places_demo", PlacesView)
     app.mount("/api", api_app)
 

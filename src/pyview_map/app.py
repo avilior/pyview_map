@@ -11,8 +11,8 @@ app.mount(
     StaticFiles(
         packages=[
             ("pyview", "static"),
-            ("pyview_map.views.components.dynamic_map", "static"),
-            ("pyview_map.views.components.dynamic_list", "static"),
+            ("pyview_map.components.dynamic_map", "static"),
+            ("pyview_map.components.dynamic_list", "static"),
         ]
     ),
     name="static",

@@ -29,12 +29,12 @@ packages = ["src/pyview_map"]
 line-length = 120
 # Ruff doesn't support t-strings (PEP 750, Python 3.14) yet — exclude files that use them
 exclude = [
-    "src/pyview_map/views/components/dynamic_map/dynamic_map_component.py",
-    "src/pyview_map/views/components/dynamic_map/map_driver.py",
-    "src/pyview_map/views/components/dynamic_list/dynamic_list.py",
-    "src/pyview_map/views/components/dynamic_list/list_driver.py",
-    "src/pyview_map/views/dynamic_map_demo/dynamic_map_demo.py",
-    "src/pyview_map/views/places_demo/places_demo.py",
+    "src/pyview_map/components/dynamic_map/dynamic_map_component.py",
+    "src/pyview_map/components/dynamic_map/map_driver.py",
+    "src/pyview_map/components/dynamic_list/dynamic_list.py",
+    "src/pyview_map/components/dynamic_list/list_driver.py",
+    "src/pyview_map/applications/flights_demo/flights_demo.py",
+    "src/pyview_map/applications/places_demo/places_demo.py",
 ]
 
 [tool.ruff.format]

@@ -26,7 +26,6 @@ cd pyview_map
 
 just install    # uv sync
 just dmap       # start server and open /dmap in the browser
-just mock-run   # (separate terminal) start the mock client — markers appear on the map
 ```
 
 Other just commands:
@@ -34,8 +33,6 @@ Other just commands:
 ```
 just run        # start the server
 just stop       # stop the server
-just mock-stop  # stop the mock client
-just open-map   # open /map in the browser
 just open-dmap  # open /dmap in the browser
 ```
 
@@ -59,16 +56,6 @@ curl -X POST http://localhost:8123/api/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"markers.add","params":{"id":"hq","name":"HQ","latLng":[40.7,-74.0]},"id":1}'
 ```
-
-### Mock client
-
-`examples/mock_client.py` is a reference external client. It seeds markers and moves them using the same physics as `MockGenerator`, but drives them over HTTP instead of running in-process:
-
-```bash
-uv run python examples/mock_client.py
-```
-
-Or use `just mock-run` which also ensures the server is running and opens the browser first.
 
 ## How the streaming map works
 
@@ -94,7 +81,7 @@ POST /api/rpc markers.add
 Implement the `MarkerSource` protocol and register it with `with_source()`:
 
 ```python
-from pyview_map.views.components.dynamic_map.dynamic_map_component import DMarker
+from pyview_map.components.dynamic_map.dynamic_map_component import DMarker
 
 
 class MySource:
@@ -142,8 +129,9 @@ src/pyview_map/
         ├── api_marker_source.py    # MarkerSource backed by a class-level asyncio.Queue
         ├── marker_api.py           # FastAPI sub-app — JSON-RPC 2.0 endpoint at /api/rpc
         └── static/dynamic_map.js
-examples/
-└── mock_client.py                  # Reference external client — drives /dmap via JSON-RPC
+backends/
+├── places_backend/                 # Parks BE — populates /places_demo list + map
+└── flights_backend/                # Flights BE — simulates flights for /flights
 ```
 
 See [`CLAUDE.md`](CLAUDE.md) for development conventions and deeper implementation notes.
