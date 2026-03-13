@@ -10,7 +10,7 @@ from .dynamic_map_component import DynamicMapComponent
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.latlng import LatLng
 from pyview_map.views.components.shared.cid import next_cid
-from .models.map_events import MapEvent, MarkerEvent, PolylineEvent
+from .models.map_events import MapEvent, MapReadyEvent, MarkerEvent, PolylineEvent
 
 
 class MapDriver:
@@ -165,6 +165,12 @@ class MapDriver:
                 detail += f" zoom={me.zoom}"
             EventBroadcaster.broadcast(me)
             return detail
+
+        elif event == "map-ready":
+            EventBroadcaster.broadcast(MapReadyEvent(
+                channel=self._channel, cid=self._cid,
+            ))
+            return "map ready"
 
         return None
 

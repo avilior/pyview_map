@@ -11,8 +11,6 @@ from pyview.template import TemplateView
 from pyview.template.live_view_template import stream_for
 
 from .models.dlist_item import DListItem
-from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
-from .models.list_events import ListItemClickEvent
 
 # Type alias for item renderers.
 # A renderer receives a DListItem and returns the inner content (t-string).
@@ -88,11 +86,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
         _apply_list_ops(ctx.items, assigns.get("list_ops", []), stream_name=stream_name)
 
     async def handle_event(self, event: str, payload: dict, socket: ComponentSocket[DynamicListComponentContext]) -> None:
-        if event == "item-click":
-            item_id = payload.get("id", "")
-            label = payload.get("label", "")
-            evt = ListItemClickEvent(event="click", id=item_id, label=label)
-            EventBroadcaster.broadcast(evt)
+        pass  # click events bubble to parent LiveView; ListDriver handles broadcast with channel/cid
 
     def template(self, assigns: DynamicListComponentContext, meta: ComponentMeta):
         channel = assigns.channel
@@ -100,7 +94,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
         renderer = assigns._item_renderer
 
         items_html = stream_for(assigns.items, lambda dom_id, item:
-            t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-target="{meta.myself}" phx-value-id="{item.id}" phx-value-label="{item.label}">{renderer(item)}</div>'
+            t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-value-id="{item.id}" phx-value-label="{item.label}">{renderer(item)}</div>'
         )
 
         return t"""<div data-channel="{channel}">

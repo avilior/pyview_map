@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from pyview_map.views.components.shared.latlng import LatLng
+
+NOTIFICATION_METHOD = "notifications/map.event"
 
 
 @dataclass(slots=True)
 class MarkerOpEvent:
     """Marker CRUD operation from the API (add/update/delete)."""
 
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
     op: str  # "add" | "update" | "delete"
     id: str
     name: str | None = None
@@ -42,6 +46,7 @@ class MarkerOpEvent:
 class MarkerEvent:
     """Browser marker interaction (click, drag, etc.)."""
 
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
     event: str
     id: str
     name: str
@@ -68,6 +73,7 @@ class MarkerEvent:
 class MapEvent:
     """Browser map interaction (click, zoom, pan, etc.)."""
 
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
     event: str
     center: LatLng
     zoom: int
@@ -97,6 +103,7 @@ class MapEvent:
 class PolylineOpEvent:
     """Polyline CRUD operation from the API (add/update/delete)."""
 
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
     op: str  # "add" | "update" | "delete"
     id: str
     name: str | None = None
@@ -133,6 +140,7 @@ class PolylineOpEvent:
 class PolylineEvent:
     """Browser polyline interaction (click, etc.)."""
 
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
     event: str
     id: str
     name: str
@@ -155,11 +163,28 @@ class PolylineEvent:
         return d
 
 
-BroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent | PolylineOpEvent | PolylineEvent
+@dataclass(slots=True)
+class MapReadyEvent:
+    """Map component is mounted and ready in the browser."""
+
+    notification_method: ClassVar[str] = NOTIFICATION_METHOD
+    channel: str | None = None
+    cid: str | None = None
+
+    def to_dict(self) -> dict:
+        d: dict = {"type": "map-ready"}
+        if self.channel is not None:
+            d["channel"] = self.channel
+        if self.cid is not None:
+            d["cid"] = self.cid
+        return d
 
 
-def parse_event(params: dict) -> BroadcastEvent:
-    """Reconstruct a typed event from a notification params dict."""
+MapBroadcastEvent = MarkerOpEvent | MarkerEvent | MapEvent | PolylineOpEvent | PolylineEvent | MapReadyEvent
+
+
+def parse_map_event(params: dict) -> MapBroadcastEvent:
+    """Parse a map/marker/polyline event from notification params."""
     etype = params.get("type")
     channel = params.get("channel")
     cid = params.get("cid")
@@ -212,26 +237,10 @@ def parse_event(params: dict) -> BroadcastEvent:
                 latLng=LatLng.from_list(params["latLng"]),
                 channel=channel, cid=cid,
             )
-        case "list-item-op":
-            from pyview_map.views.components.dynamic_list.models.list_events import ListItemOpEvent
-            return ListItemOpEvent(
-                op=params["op"],
-                id=params.get("id", ""),
-                label=params.get("label", ""),
-                subtitle=params.get("subtitle", ""),
-                at=params.get("at", -1),
-                channel=channel, cid=cid,
-            )
-        case "list-item-event":
-            from pyview_map.views.components.dynamic_list.models.list_events import ListItemClickEvent
-            return ListItemClickEvent(
-                event=params["event"],
-                id=params["id"],
-                label=params["label"],
-                channel=channel, cid=cid,
-            )
+        case "map-ready":
+            return MapReadyEvent(channel=channel, cid=cid)
         case _:
-            raise ValueError(f"Unknown event type: {etype}")
+            raise ValueError(f"Unknown map event type: {etype}")
 
 
 # ---------------------------------------------------------------------------

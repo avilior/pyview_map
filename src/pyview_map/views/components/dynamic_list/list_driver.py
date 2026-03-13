@@ -7,7 +7,7 @@ from .sources.list_command_queue import list_command_queue
 from .dynamic_list import DynamicListComponent, ItemRenderer, default_item_renderer
 from pyview_map.views.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.views.components.shared.cid import next_cid
-from .models.list_events import ListItemClickEvent
+from .models.list_events import ListItemClickEvent, ListReadyEvent
 
 
 class ListDriver:
@@ -98,6 +98,11 @@ class ListDriver:
             )
             EventBroadcaster.broadcast(evt)
             return f"click → {label}"
+        elif event == "list-ready":
+            EventBroadcaster.broadcast(ListReadyEvent(
+                channel=self._channel, cid=self._cid,
+            ))
+            return "list ready"
         return None
 
     def render(self):

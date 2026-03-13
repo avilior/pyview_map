@@ -15,5 +15,6 @@ window.Hooks.DynamicList = {
       item.classList.add('list-item-highlight');
       setTimeout(() => item.classList.remove('list-item-highlight'), 2000);
     });
+    this.pushEvent("list-ready", {});
   },
 };

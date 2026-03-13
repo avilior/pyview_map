@@ -386,6 +386,8 @@ window.Hooks.DynamicMap = {
                  [bounds.getNorthEast().lat, bounds.getNorthEast().lng]],
       });
     });
+
+    this.pushEvent("map-ready", {});
   },
 };
 

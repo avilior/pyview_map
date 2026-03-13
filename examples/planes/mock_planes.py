@@ -25,7 +25,8 @@ from pyview_map.views.components.dynamic_map import DPolyline
 from pyview_map.views.components.dynamic_map.models.dmarker import DMarker
 from pyview_map.views.components.shared.latlng import LatLng
 from pyview_map.views.components.dynamic_map.models.map_events import (
-    MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
+    NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD,
+    MarkerOpEvent, MarkerEvent, MapEvent, parse_map_event,
 )
 from navigation_utils import great_circle_flight_generator, bearing_deg, great_circle_position_at_time
 
@@ -200,11 +201,11 @@ class Flight:
 
 async def listen_events(rpc: ClientRPC) -> None:
     """Subscribe to map/marker events and print them as they arrive."""
-    req = JSONRPCRequest(method="map.events.subscribe")
+    req = JSONRPCRequest(method="map.subscribe")
     async for msg in rpc.send_request(req):
         match msg:
-            case JSONRPCNotification() if isinstance(msg.params, dict):
-                evt = parse_event(msg.params)
+            case JSONRPCNotification() if msg.method == MAP_NOTIFICATION_METHOD:
+                evt = parse_map_event(msg.params)
                 match evt:
                     case MarkerOpEvent():
                         ll = f"({evt.latLng.lat}, {evt.latLng.lng})" if evt.latLng else "-"

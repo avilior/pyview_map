@@ -79,8 +79,13 @@ def markers_list(channel: str) -> dict:
     return {"markers": [m.to_dict() for m in marker_source.channel_items(channel).values()]}
 
 
-@jrpc_service.request("map.events.subscribe")
-async def map_events_subscribe() -> asyncio.Queue:
+@jrpc_service.request("map.subscribe")
+async def map_subscribe() -> asyncio.Queue:
+    return EventBroadcaster.subscribe()
+
+
+@jrpc_service.request("bff.subscribe")
+async def bff_subscribe() -> asyncio.Queue:
     return EventBroadcaster.subscribe()
 
 

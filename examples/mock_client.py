@@ -15,7 +15,8 @@ from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification, JSONRPCErrorResponse
 
 from pyview_map.views.components.dynamic_map.models.map_events import (
-    MarkerOpEvent, MarkerEvent, MapEvent, parse_event,
+    NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD,
+    MarkerOpEvent, MarkerEvent, MapEvent, parse_map_event,
 )
 
 BASE_URL = "http://localhost:8123/api"
@@ -72,13 +73,13 @@ async def listen_events(rpc: ClientRPC) -> None:
     """Subscribe to map/marker events and print them as they arrive."""
     # This will trigger the service to open a channel which will be used to receive Notification events
     # Upon receiving the Response to the request the channel will be closed.
-    req = JSONRPCRequest(method="map.events.subscribe")
+    req = JSONRPCRequest(method="map.subscribe")
     async for msg in rpc.send_request(req):
 
         match msg:
-            case JSONRPCNotification() if isinstance(msg.params, dict):
+            case JSONRPCNotification() if msg.method == MAP_NOTIFICATION_METHOD:
                 print(f"[RX {msg.method}]:")
-                evt = parse_event(msg.params)
+                evt = parse_map_event(msg.params)
                 match evt:
                     case MarkerOpEvent():
                         ll = f"({evt.latLng.lat}, {evt.latLng.lng})" if evt.latLng else "-"

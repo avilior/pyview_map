@@ -46,7 +46,7 @@ def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
 def list_list(channel: str) -> dict:
     return {"items": [{"id": item.id, "label": item.label, "subtitle": item.subtitle, "data": item.data} for item in list_source.channel_items(channel).values()]}
 
-@jrpc_service.request("list.events.subscribe")
-async def map_events_subscribe() -> asyncio.Queue:
+@jrpc_service.request("list.subscribe")
+async def list_subscribe() -> asyncio.Queue:
     return EventBroadcaster.subscribe()
 
