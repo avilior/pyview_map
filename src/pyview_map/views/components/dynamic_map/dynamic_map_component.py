@@ -1,7 +1,7 @@
 
 import json
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from pyview.components import LiveComponent
 from pyview.components.base import ComponentMeta, ComponentSocket
@@ -11,34 +11,6 @@ from pyview.template.live_view_template import stream_for
 from .models.dmarker import DMarker
 from .models.dpolyline import DPolyline
 from pyview_map.views.components.shared.latlng import LatLng
-
-
-# ---------------------------------------------------------------------------
-# MarkerSource protocol — implement this to feed any data into DynamicMapLiveView
-# ---------------------------------------------------------------------------
-
-@runtime_checkable
-class MarkerSource(Protocol):
-    """
-    A data source that provides markers and a stream of updates.
-
-    Implement this protocol to connect any backend (GPS feed, database,
-    simulation, etc.) to DynamicMapLiveView.
-    """
-
-    @property
-    def markers(self) -> list[DMarker]:
-        """Return the current set of markers (used for initial render)."""
-        ...
-
-    def next_update(self) -> dict:
-        """
-        Return the next marker operation as a dict:
-            {"op": "add",    "id": str, "name": str, "latLng": [lat, lng]}
-            {"op": "delete", "id": str}
-            {"op": "update", "id": str, "name": str, "latLng": [lat, lng]}
-        """
-        ...
 
 
 # ---------------------------------------------------------------------------

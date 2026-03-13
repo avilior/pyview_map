@@ -72,7 +72,7 @@ def main():
     LOG.info("Marker API available at  http://localhost:8123/api/mcp")
     LOG.info("Places Demo              http://localhost:8123/places_demo")
 
-    app.add_live_view("/dmap", DynamicMapLiveView.with_source(channel="dmap"))
+    app.add_live_view("/dmap", DynamicMapLiveView.with_channel("dmap"))
     app.add_live_view("/places_demo", PlacesView)
     app.mount("/api", api_app)
 

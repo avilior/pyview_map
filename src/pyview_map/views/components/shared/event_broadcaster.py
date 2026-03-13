@@ -13,7 +13,7 @@ class EventBroadcaster:
     """Broadcasts map/marker events from the LiveView to SSE subscribers.
 
     Uses class-level state so all LiveView connections share the same
-    broadcaster — same pattern as APIMarkerSource.
+    broadcaster.
     """
 
     _subscribers: set[asyncio.Queue] = set()

@@ -13,7 +13,7 @@ import logging
 LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Parent LiveView — drives PubSub-based updates, embeds map component
+# Parent LiveView — PubSub-driven updates, embeds map component
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -27,58 +27,35 @@ class DynamicMapLiveView(TemplateView, LiveView[DynamicMapPageContext]):
     """
     Generic real-time marker map.
 
-    Agnostic of any specific use case — plug in any MarkerSource to drive it.
-
     Usage:
-        app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource))
-        app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource, tick_interval=2.0, **source_kwargs))
+        app.add_live_view("/dmap", DynamicMapLiveView.with_channel("dmap"))
 
     The view handles:
       - Initial marker render via Stream (inside DynamicMapComponent)
-      - PubSub-driven updates for API-sourced data (no tick needed)
-      - Tick polling for custom MarkerSource classes (e.g. MockGenerator)
+      - PubSub-driven updates from the JSON-RPC API
       - Marker and map events from Leaflet forwarded to handle_event
       - Map commands from PubSub pushed via socket.push_event
     """
 
-    # Set by with_source(); subclasses can also set these as class attributes.
-    source_class: type | None = None
-    tick_interval: float = 1.2
-    _source_kwargs: dict = {}
     _channel: str = "dmap"
 
     @classmethod
-    def with_source(cls, source_class: type | None = None, *, channel: str = "dmap", tick_interval: float = 1.2, **source_kwargs):
-        """Return a configured DynamicMapLiveView class bound to source_class.
-
-        If source_class is None (default), MapDriver uses PubSub for data
-        delivery from the JSON-RPC API.
-        """
+    def with_channel(cls, channel: str = "dmap"):
+        """Return a configured DynamicMapLiveView class bound to a channel."""
         return type(
             "DynamicMapLiveView",
             (cls,),
-            {
-                "source_class": source_class,
-                "tick_interval": tick_interval,
-                "_source_kwargs": source_kwargs,
-                "_channel": channel,
-            },
+            {"_channel": channel},
         )
 
     async def mount(self, socket: LiveViewSocket[DynamicMapPageContext], session: Session):
-        self._map = MapDriver(self._channel, source_class=self.source_class, source_kwargs=self._source_kwargs or None)
+        self._map = MapDriver(self._channel)
         socket.context = DynamicMapPageContext()
 
         if socket.connected:
             await self._map.connect(socket)
-            if self.source_class is not None:
-                # Source-based: need tick for polling the MarkerSource
-                socket.schedule_info(InfoEvent("tick"), seconds=self.tick_interval)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[DynamicMapPageContext]):
-        if event.name == "tick":
-            await self._map.tick(socket)
-            return
         await self._map.handle_info(event, socket)
 
     async def handle_event(self, event, payload, socket: ConnectedLiveViewSocket[DynamicMapPageContext]):

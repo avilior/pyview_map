@@ -35,7 +35,7 @@ src/pyview_map/
     │   │   ├── item_store.py         # ItemStore[T] — channel-partitioned state store
     │   │   └── topics.py             # PubSub topic naming functions
     │   ├── dynamic_map/             # Real-time streaming Leaflet map component
-    │   │   ├── dynamic_map_component.py  # DynamicMapComponent (LiveComponent) + MarkerSource protocol
+    │   │   ├── dynamic_map_component.py  # DynamicMapComponent (LiveComponent)
     │   │   ├── map_driver.py          # MapDriver — encapsulates parent-side plumbing for hosting a map
     │   │   ├── dynamic_map.css
     │   │   ├── icon_registry.py      # DivIcon registry (icons.json → JSON for JS)
@@ -44,9 +44,8 @@ src/pyview_map/
     │   │   │   ├── dpolyline.py       # DPolyline dataclass (uses LatLng)
     │   │   │   └── map_events.py      # Typed event/command dataclasses + parse_event()
     │   │   ├── sources/              # Data providers + state stores
-    │   │   │   ├── api_marker_source.py  # marker_store (ItemStore) + MarkerSource protocol
-    │   │   │   ├── api_polyline_source.py # polyline_store (ItemStore)
-    │   │   │   └── mock_generator.py     # MockGenerator — in-process MarkerSource (heading/speed simulation)
+    │   │   │   ├── api_marker_source.py  # marker_store (ItemStore)
+    │   │   │   └── api_polyline_source.py # polyline_store (ItemStore)
     │   │   ├── api/                  # JRPC methods + FastAPI sub-app
     │   │   │   └── marker_api.py      # JRPCService methods + mcp_router at /api/mcp
     │   │   └── static/
@@ -229,9 +228,6 @@ DynamicMapLiveView (TemplateView + LiveView)
 6. Component `update()` applies ops to Streams (gated by version counter)
 7. Component re-renders with updated stream diffs
 
-**Custom source fallback**: When `source_class` is provided (e.g. MockGenerator),
-the driver uses `schedule_info("tick")` + `tick()` polling instead of PubSub for
-marker ops. Polyline and command PubSub subscriptions still apply.
 
 ### DynamicMapComponent
 
@@ -250,49 +246,14 @@ map widget. Key lifecycle:
 Stream names use the pattern `f"{channel}-markers"` and `f"{channel}-polylines"`
 to avoid DOM ID collisions between multiple map instances.
 
-### Plugging in a custom data source
-
-Implement the `MarkerSource` protocol and register with `with_source()`:
-
-```python
-from pyview_map.views.components.dynamic_map.dynamic_map_component import DMarker, MarkerSource
-from pyview_map.views.components.shared.latlng import LatLng
-
-
-class MySource:  # no need to inherit — duck typing
-    @property
-    def markers(self) -> list[DMarker]:
-        """Called once on mount to populate the initial map state."""
-        return [DMarker(id="1", name="HQ", lat_lng=LatLng(40.7, -74.0))]
-
-    def next_update(self) -> dict:
-        """Called on every tick. Return one operation."""
-        # {"op": "add",    "id": str, "name": str, "latLng": [lat, lng]}
-        # {"op": "delete", "id": str}
-        # {"op": "update", "id": str, "name": str, "latLng": [lat, lng]}
-        # {"op": "noop"}   ← return this when there is nothing to do this tick
-        return {"op": "update", "id": "1", "name": "HQ", "latLng": [40.71, -74.01]}
-```
-
 ### Registering in __main__.py
 
 ```python
-from pyview_map.views.components.dynamic_map import DynamicMapLiveView, MultiMapLiveView
+from pyview_map.views.components.dynamic_map import DynamicMapLiveView
 
 # Single map:
-app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource))
-
-# Pass constructor kwargs and override the tick interval (seconds):
-app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_interval=2.0, fleet_id=42))
-
-# Multiple maps on one page:
-app.add_live_view("/mmap", MultiMapLiveView.with_maps(["left", "right"]))
+app.add_live_view("/dmap", DynamicMapLiveView.with_channel("dmap"))
 ```
-
-`MockGenerator` in `mock_generator.py` is an in-process reference implementation.
-`APIMarkerSource` in `api_marker_source.py` is the default source used by `/dmap` —
-it receives operations from the JSON-RPC API and fans them out to all connected
-LiveView instances via per-instance subscriber queues.
 
 ### MapDriver and ListDriver
 
@@ -333,22 +294,13 @@ class MyPageView(TemplateView, LiveView[MyPageContext]):
         return t'<div>{self._map.render()}{self._list.render()}</div>'
 ```
 
-**MapDriver data delivery:**
-- Default (no `source_class`): subscribes to PubSub topics for reactive delivery.
-  No tick polling needed — data arrives immediately when API handlers broadcast.
-- Explicit `source_class`: uses the given class with `source_kwargs` as-is.
-  Needs `schedule_info("tick")` + `tick()` for polling the source.
-
 Each driver auto-generates a unique `cid` (channel instance ID) via `next_cid()`.
 The cid identifies a specific browser connection within a channel, enabling
 per-connection targeting from the API.
 
 ```python
-# Default — APIMarkerSource with auto channel routing:
+# Default — PubSub-driven with channel routing:
 MapDriver("my-map")
-
-# Custom source (e.g. MockGenerator):
-MapDriver("dmap", source_class=MockGenerator, source_kwargs={"initial_count": 10})
 ```
 
 ### MultiMapLiveView

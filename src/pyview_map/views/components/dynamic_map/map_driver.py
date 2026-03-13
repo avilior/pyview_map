@@ -1,7 +1,7 @@
 from pyview.events import InfoEvent
 from pyview.template.live_view_template import live_component
 
-from .sources.api_marker_source import marker_store, MarkerSource
+from .sources.api_marker_source import marker_store
 from .sources.api_polyline_source import polyline_store
 from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
@@ -16,43 +16,25 @@ class MapDriver:
     """Encapsulates all parent-side plumbing for hosting a DynamicMapComponent.
 
     A page developer only needs to call connect(), handle_info(), clear_ops(),
-    handle_event(), and render() — no sources, queues, or ops tracking.
+    handle_event(), and render().
 
     Each driver instance gets a unique cid (channel instance ID) via a
     monotonic counter. The cid is shared across all its subscriptions
     and included in events so external clients can identify and target
     specific connections.
 
-    Data delivery modes:
-      - Default (no source_class): subscribes to PubSub topics for marker/polyline
-        ops and map commands. Data arrives reactively — no tick polling needed.
-      - Explicit source_class: uses the given class with source_kwargs as-is.
-        The source is polled via tick() (e.g. MockGenerator).
-        Polyline and command PubSub subscriptions still apply.
+    Data arrives reactively via PubSub — no tick polling needed.
 
     Usage::
 
-        # Simple — PubSub-driven with channel routing:
         self._map = MapDriver("my-map")
-
-        # Custom source class (e.g. MockGenerator) — needs tick:
-        self._map = MapDriver("dmap", source_class=MockGenerator, source_kwargs={"initial_count": 10})
     """
 
-    def __init__(self, channel: str, *, source_class: type | None = None, source_kwargs: dict | None = None):
+    def __init__(self, channel: str):
         self._channel = channel
         self._cid = next_cid()
-        self._has_source = source_class is not None
 
-        if source_class is not None:
-            # Explicit source class — use source_kwargs as-is, polled via tick()
-            kwargs = dict(source_kwargs) if source_kwargs else {}
-            self._source: MarkerSource = source_class(**kwargs)
-            self._initial_markers = self._source.items
-        else:
-            # Default: PubSub-driven, snapshot initial state from store
-            self._initial_markers = marker_store.all_items(channel)
-
+        self._initial_markers = marker_store.all_items(channel)
         self._initial_polylines = polyline_store.all_items(channel)
         self._icon_registry_json = icon_registry.to_json()
         self._marker_ops: list[dict] = []
@@ -73,9 +55,8 @@ class MapDriver:
 
     async def connect(self, socket):
         """Subscribe to PubSub topics. Call when socket.connected."""
-        if not self._has_source:
-            for topic in self._marker_topics:
-                await socket.subscribe(topic)
+        for topic in self._marker_topics:
+            await socket.subscribe(topic)
         for topic in self._polyline_topics:
             await socket.subscribe(topic)
         for topic in self._cmd_topics:
@@ -92,7 +73,7 @@ class MapDriver:
         self._marker_ops = []
         self._polyline_ops = []
 
-        if not self._has_source and topic in self._marker_topics:
+        if topic in self._marker_topics:
             self._marker_ops = [event.payload]
             self._ops_version += 1
             return True
@@ -109,23 +90,6 @@ class MapDriver:
             return True
 
         return False
-
-    async def tick(self, socket):
-        """Drain custom source. Only needed when source_class is provided."""
-        if not self._has_source:
-            return
-
-        marker_ops: list[dict] = []
-        while True:
-            update = self._source.next_update()
-            if update["op"] == "noop":
-                break
-            marker_ops.append(update)
-
-        self._marker_ops = marker_ops
-        self._polyline_ops = []
-        if marker_ops:
-            self._ops_version += 1
 
     def clear_ops(self):
         """Clear stale ops so component doesn't re-apply. Call at start of handle_event."""
