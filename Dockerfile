@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock* ./
+COPY packages/dmap_models/ packages/dmap_models/
 
 # Install dependencies (without the project itself)
 RUN --mount=type=ssh mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \

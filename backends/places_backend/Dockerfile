@@ -4,15 +4,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
 
 WORKDIR /app
 
-# Copy dependency files first for layer caching
-COPY pyproject.toml uv.lock* ./
+# Copy shared package and dependency files (mirror repo layout for path deps)
+COPY packages/dmap_models/ packages/dmap_models/
+COPY backends/places_backend/pyproject.toml backends/places_backend/
+
+WORKDIR /app/backends/places_backend
 
 # Install dependencies (without the project itself)
 RUN --mount=type=ssh mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
     uv sync --no-install-project
 
 # Copy source code
-COPY src/ src/
+COPY backends/places_backend/src/ src/
 
 # Install the project
 RUN uv sync

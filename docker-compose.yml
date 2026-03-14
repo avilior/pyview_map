@@ -20,8 +20,8 @@ services:
 
   places-backend:
     build:
-      context: backends/places_backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backends/places_backend/Dockerfile
       ssh:
         - default
     ports:
@@ -36,8 +36,8 @@ services:
 
   flights-backend:
     build:
-      context: backends/flights_backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backends/flights_backend/Dockerfile
       ssh:
         - default
     ports:
