@@ -6,7 +6,8 @@ from pyview.live_socket import pub_sub_hub
 
 from pyview_map.components.dynamic_list.sources.api_list_source import list_store
 from pyview_map.components.dynamic_list.models.dlist_item import DListItem
-from pyview_map.components.dynamic_list.models.list_events import HighlightListItemCmd, ListItemOpEvent
+from dmap_models.list_events import ListItemOpEvent
+from pyview_map.components.dynamic_list.models.list_commands import HighlightListItemCmd
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.components.shared.topics import list_ops_topic, list_cmd_topic
 

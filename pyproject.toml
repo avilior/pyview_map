@@ -12,12 +12,14 @@ dependencies = [
     "http-stream-transport",
     "http-stream-client",
     "jrpc-common",
+    "dmap-models",
 ]
 
 [tool.uv.sources]
 http-stream-transport = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/server_pkg" }
 http-stream-client = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/client" }
 jrpc-common = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/jrpc_common" }
+dmap-models = { path = "packages/dmap_models" }
 
 [build-system]
 requires = ["hatchling"]

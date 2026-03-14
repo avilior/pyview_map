@@ -2,9 +2,9 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 
 from pyview.live_socket import pub_sub_hub
 
-from pyview_map.components.shared.latlng import LatLng
+from dmap_models.latlng import LatLng
 from pyview_map.components.shared.topics import map_cmd_topic
-from pyview_map.components.dynamic_map.models.map_events import (
+from pyview_map.components.dynamic_map.models.map_commands import (
     FitBoundsCmd,
     FlyToBoundsCmd,
     FlyToCmd,

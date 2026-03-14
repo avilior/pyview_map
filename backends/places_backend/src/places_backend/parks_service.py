@@ -20,7 +20,7 @@ from http_stream_transport.jsonrpc.openrpc import setup_rpc_docs
 from places_backend.settings import settings
 from places_backend.parks import national_parks
 
-from places_backend.models.list_events import (
+from dmap_models.list_events import (
     NOTIFICATION_METHOD as LIST_NOTIFICATION_METHOD,
     ListItemClickEvent,
     ListItemOpEvent,

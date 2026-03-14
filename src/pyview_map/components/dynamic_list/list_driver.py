@@ -6,7 +6,7 @@ from .dynamic_list import DynamicListComponent, ItemRenderer, default_item_rende
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
 from pyview_map.components.shared.cid import next_cid
 from pyview_map.components.shared.topics import list_ops_topic, list_cmd_topic
-from .models.list_events import ListItemClickEvent, ListReadyEvent
+from dmap_models.list_events import ListItemClickEvent, ListReadyEvent
 
 
 class ListDriver:

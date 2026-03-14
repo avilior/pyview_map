@@ -6,10 +6,10 @@ from .sources.api_polyline_source import polyline_store
 from .icon_registry import icon_registry
 from .dynamic_map_component import DynamicMapComponent
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
-from pyview_map.components.shared.latlng import LatLng
+from dmap_models.latlng import LatLng
+from dmap_models.map_events import MapEvent, MapReadyEvent, MarkerEvent, PolylineEvent
 from pyview_map.components.shared.cid import next_cid
 from pyview_map.components.shared.topics import marker_ops_topic, polyline_ops_topic, map_cmd_topic
-from .models.map_events import MapEvent, MapReadyEvent, MarkerEvent, PolylineEvent
 
 
 class MapDriver:

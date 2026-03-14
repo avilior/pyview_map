@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from flights_backend.models.latlng import LatLng
+from dmap_models.latlng import LatLng
 
 
 @dataclass

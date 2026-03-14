@@ -18,16 +18,12 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCNotification, JSONRPCResponse
 
+from dmap_models.latlng import LatLng
+from dmap_models.dmarker import DMarker
+from dmap_models.dpolyline import DPolyline
+from dmap_models.map_events import NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD, MapReadyEvent, parse_map_event
 from http_stream_transport.jsonrpc.openrpc import setup_rpc_docs
 from flights_backend.settings import settings
-from flights_backend.models.latlng import LatLng
-from flights_backend.models.dmarker import DMarker
-from flights_backend.models.dpolyline import DPolyline
-from flights_backend.models.map_events import (
-    NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD,
-    MapReadyEvent,
-    parse_map_event,
-)
 from flights_backend.navigation_utils import great_circle_flight_generator, bearing_deg, great_circle_position_at_time
 
 LOG = logging.getLogger(__name__)

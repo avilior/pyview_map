@@ -2,12 +2,12 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 
 from pyview.live_socket import pub_sub_hub
 
+from dmap_models.dpolyline import DPolyline
+from dmap_models.latlng import LatLng
+from dmap_models.map_events import PolylineOpEvent
 from pyview_map.components.dynamic_map.sources.api_polyline_source import polyline_store
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
-from pyview_map.components.shared.latlng import LatLng
 from pyview_map.components.shared.topics import polyline_ops_topic
-from pyview_map.components.dynamic_map.models.dpolyline import DPolyline
-from pyview_map.components.dynamic_map.models.map_events import PolylineOpEvent
 
 
 @jrpc_service.request("polylines.add")

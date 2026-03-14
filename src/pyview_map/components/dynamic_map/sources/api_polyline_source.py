@@ -1,4 +1,4 @@
-from pyview_map.components.dynamic_map.models.dpolyline import DPolyline
+from dmap_models.dpolyline import DPolyline
 from pyview_map.components.shared.item_store import ItemStore
 
 polyline_store: ItemStore[DPolyline] = ItemStore()

@@ -2,12 +2,12 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 
 from pyview.live_socket import pub_sub_hub
 
+from dmap_models.dmarker import DMarker
+from dmap_models.latlng import LatLng
+from dmap_models.map_events import MarkerOpEvent
 from pyview_map.components.dynamic_map.sources.api_marker_source import marker_store
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
-from pyview_map.components.shared.latlng import LatLng
 from pyview_map.components.shared.topics import marker_ops_topic
-from pyview_map.components.dynamic_map.models.dmarker import DMarker
-from pyview_map.components.dynamic_map.models.map_events import MarkerOpEvent
 
 
 @jrpc_service.request("markers.add")

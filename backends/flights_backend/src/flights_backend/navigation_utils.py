@@ -2,7 +2,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Iterator, Tuple
 
-from flights_backend.models.latlng import LatLng
+from dmap_models.latlng import LatLng
 
 EARTH_RADIUS_NM = 3440.065  # nautical miles
 
