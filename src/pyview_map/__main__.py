@@ -1,7 +1,6 @@
 # import pyview as _pyview_pkg
 # from pathlib import Path
 
-import json
 import uvicorn
 
 # Fixed with 0.9.0a4 issue 141
