@@ -12,12 +12,9 @@ from pyview_map.components.dynamic_map import MapDriver
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from jrpc_common.jrpc_model import JSONRPCNotification, JSONRPCRequest, JSONRPCResponse
+from pyview_map.settings import settings
 
 LOG = logging.getLogger(__name__)
-
-FLIGHTS_SERVICE_URL = "http://localhost:8300/api"
-FLIGHTS_SERVICE_TOKEN = "tok-acme-001"
-BFF_CALLBACK_URL = "http://localhost:8123/api"
 
 
 @dataclass
@@ -43,11 +40,11 @@ class FlightsView(TemplateView, LiveView[FlightsViewContext]):
         live flight positions via JSON-RPC calls back to the BFF.
         """
         try:
-            async with ClientRPC(base_url=FLIGHTS_SERVICE_URL, auth_token=FLIGHTS_SERVICE_TOKEN) as rpc:
+            async with ClientRPC(base_url=settings.flights_backend_url, auth_token=settings.auth_token) as rpc:
                 req = JSONRPCRequest(
                     method="flights.subscribe",
                     params={
-                        "callback_url": BFF_CALLBACK_URL,
+                        "callback_url": settings.callback_url,
                         "map_channel": f"{self.base_channel}-map",
                         "map_cid": self._map.cid,
                     },
@@ -62,7 +59,7 @@ class FlightsView(TemplateView, LiveView[FlightsViewContext]):
         except asyncio.CancelledError:
             LOG.info("flights subscription cancelled")
         except Exception:
-            LOG.exception("Failed to subscribe to flights from BE (%s)", FLIGHTS_SERVICE_URL)
+            LOG.exception("Failed to subscribe to flights from BE (%s)", settings.flights_backend_url)
 
     async def handle_info(self, event: InfoEvent, socket: ConnectedLiveViewSocket[FlightsViewContext]):
         await self._map.handle_info(event, socket)

@@ -1,0 +1,36 @@
+set dotenv-load
+
+host := env("PLACES_HOST", "0.0.0.0")
+port := env("PLACES_PORT", "8200")
+
+default:
+    @just --list
+
+# Install dependencies
+install:
+    uv sync
+
+# Run the places backend
+run:
+    uv run places-backend
+
+# Build Docker image
+docker-build:
+    docker build -t places-backend .
+
+# Run in Docker (maps external port to internal 80)
+docker-run:
+    docker run --rm -p {{port}}:80 --env-file .env --name places-backend places-backend 2>/dev/null || \
+    docker run --rm -p {{port}}:80 --name places-backend places-backend
+
+# Stop Docker container
+docker-stop:
+    docker stop places-backend 2>/dev/null || true
+
+# Health check
+health:
+    curl -s http://localhost:{{port}}/api/health | python -m json.tool
+
+# Open API docs
+docs:
+    open http://localhost:{{port}}/api/docs

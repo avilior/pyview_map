@@ -1,0 +1,51 @@
+services:
+  bff:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      ssh:
+        - default
+    ports:
+      - "${BFF_PORT:-8123}:80"
+    environment:
+      BFF_PLACES_BACKEND_URL: "http://places-backend/api"
+      BFF_FLIGHTS_BACKEND_URL: "http://flights-backend/api"
+      BFF_CALLBACK_URL: "http://bff/api"
+      BFF_AUTH_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
+    depends_on:
+      places-backend:
+        condition: service_healthy
+      flights-backend:
+        condition: service_healthy
+
+  places-backend:
+    build:
+      context: backends/places_backend
+      dockerfile: Dockerfile
+      ssh:
+        - default
+    ports:
+      - "${PLACES_PORT:-8200}:80"
+    environment:
+      PLACES_BFF_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  flights-backend:
+    build:
+      context: backends/flights_backend
+      dockerfile: Dockerfile
+      ssh:
+        - default
+    ports:
+      - "${FLIGHTS_PORT:-8300}:80"
+    environment:
+      FLIGHTS_BFF_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

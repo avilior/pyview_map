@@ -1,85 +1,34 @@
-# import pyview as _pyview_pkg
-# from pathlib import Path
-
 import uvicorn
-
-# Fixed with 0.9.0a4 issue 141
-# ---------------------------------------------------------------------------
-# Monkey-patch: pyview's send_info() doesn't flush pending push_events
-# (they only get sent after handle_event, not handle_info). This means
-# socket.push_event() called during a tick never reaches the browser.
-# Patch send_info to include pending_events in the diff payload.
-# Remove this once pyview-web is fixed upstream.
-# ---------------------------------------------------------------------------
-# import pyview.live_socket as _live_socket
-#
-# _original_send_info = _live_socket.ConnectedLiveViewSocket.send_info
-#
-#
-# async def _patched_send_info(self, event):
-#     await self.liveview.handle_info(event, self)
-#
-#     rendered = await self.render_with_components()
-#     diff = self.diff(rendered)
-#
-#     if self.pending_events:
-#         diff["e"] = self.pending_events
-#         self.pending_events = []
-#
-#     resp = [None, None, self.topic, "diff", diff]
-#
-#     try:
-#         await self.websocket.send_text(json.dumps(resp))
-#     except Exception:
-#         for id in list(self.scheduled_jobs):
-#             try:
-#                 self.scheduler.remove_job(id)
-#             except Exception:
-#                 pass
-#
-#
-# _live_socket.ConnectedLiveViewSocket.send_info = _patched_send_info
 
 from pyview_map.applications.flights_demo import FlightsView
 from pyview_map.applications.places_demo import PlacesView
 from pyview_map.api import api_app
 from pyview_map.app import app
+from pyview_map.settings import settings
 
 import logging
 
 LOG = logging.getLogger(__name__)
 
-# app = PyView()
-# app.rootTemplate = defaultRootTemplate(css=Markup(
-#     '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />'
-#     '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
-#     '<script src="https://cdn.tailwindcss.com"></script>'
-#     '<script defer src="/assets/map.js"></script>'
-# ))
-# app.add_live_view("/map", MapLiveView)
-
-# _pyview_static = Path(_pyview_pkg.__file__).parent / "static"
-# _app_static = Path(__file__).parent / "static"
-# app.mount("/static", StaticFiles(directory=str(_pyview_static)), name="static")
-# app.mount("/assets", StaticFiles(directory=str(_app_static)), name="assets")
-
 
 def main():
+    display_host = "localhost" if settings.host == "0.0.0.0" else settings.host
+    base = f"http://{display_host}:{settings.port}" if settings.port != 80 else f"http://{display_host}"
 
-    LOG.info("Flights Demo  http://localhost:8123/flights")
-    LOG.info("Places Demo   http://localhost:8123/places_demo")
-    LOG.info("Marker API    http://localhost:8123/api/mcp")
+    LOG.info("Flights Demo  %s/flights", base)
+    LOG.info("Places Demo   %s/places_demo", base)
+    LOG.info("Marker API    %s/api/mcp", base)
 
     app.add_live_view("/flights", FlightsView)
     app.add_live_view("/places_demo", PlacesView)
     app.mount("/api", api_app)
 
-    uvicorn.run("pyview_map.__main__:app", host="0.0.0.0", port=8123, reload=False)
+    uvicorn.run("pyview_map.__main__:app", host=settings.host, port=settings.port, reload=False)
 
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
+        level=settings.log_level,
         format="%(asctime)s[%(levelname)s] @%(module)s|%(name)s|%(funcName)s|%(lineno)d # %(message)s",
         datefmt="%y%m%d %H:%M:%S",
     )

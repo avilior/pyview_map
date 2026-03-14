@@ -1,7 +1,8 @@
 import math
 from datetime import datetime, timedelta
 from typing import Iterator, Tuple
-from pyview_map.components.shared.latlng import LatLng
+
+from flights_backend.models.latlng import LatLng
 
 EARTH_RADIUS_NM = 3440.065  # nautical miles
 
@@ -115,7 +116,7 @@ def great_circle_flight_generator(
 def bearing_deg(from_latlng: LatLng, to_latlng: LatLng) -> float:
     """
     Heading from (lat1, lon1) to (lat2, lon2) along the great-circle, in degrees.
-    0° = north, 90° = east, 180° = south, 270° = west.
+    0 = north, 90 = east, 180 = south, 270 = west.
     """
 
     lat1 = math.radians(from_latlng.lat)

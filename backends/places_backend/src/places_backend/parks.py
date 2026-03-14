@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from pyview_map.components.shared.latlng import LatLng
+
+from places_backend.models.latlng import LatLng
 
 
 @dataclass

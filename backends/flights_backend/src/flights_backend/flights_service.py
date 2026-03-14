@@ -2,8 +2,6 @@
 
 Simulates aircraft flights and pushes real-time positions to the BFF map.
 The BFF (PyView server) connects here on mount to subscribe to flight data.
-
-    cd backends/flights_backend && uv run uvicorn flights_service:app --host 0.0.0.0 --port 8300
 """
 
 import asyncio
@@ -19,23 +17,21 @@ from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
-from pyview_map.openrpc import setup_rpc_docs
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCNotification, JSONRPCResponse
 
-from pyview_map.components.dynamic_map.models.map_events import (
+from flights_backend.openrpc import setup_rpc_docs
+from flights_backend.settings import settings
+from flights_backend.models.latlng import LatLng
+from flights_backend.models.dmarker import DMarker
+from flights_backend.models.dpolyline import DPolyline
+from flights_backend.models.map_events import (
     NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD,
     MapReadyEvent,
     parse_map_event,
 )
-
-from pyview_map.components.dynamic_map import DPolyline
-from pyview_map.components.dynamic_map.models.dmarker import DMarker
-from pyview_map.components.shared.latlng import LatLng
-from navigation_utils import great_circle_flight_generator, bearing_deg, great_circle_position_at_time
+from flights_backend.navigation_utils import great_circle_flight_generator, bearing_deg, great_circle_position_at_time
 
 LOG = logging.getLogger(__name__)
-
-BFF_TOKEN = "tok-acme-001"
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +189,7 @@ class Flight:
         polyline_params["cid"] = map_cid
         await _send(rpc, "polylines.add", polyline_params)
 
-        LOG.info("Flight %s: %s → %s started", self.id, self.origin.name, self.destination.name)
+        LOG.info("Flight %s: %s -> %s started", self.id, self.origin.name, self.destination.name)
 
         while True:
             await asyncio.sleep(1)
@@ -223,15 +219,15 @@ class Flight:
 
 
 # ---------------------------------------------------------------------------
-# Reverse connection (BE → BFF)
+# Reverse connection (BE -> BFF)
 # ---------------------------------------------------------------------------
 
 
 async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str) -> None:
     """Connect back to the BFF: wait for map ready, populate airports, run flights."""
-    LOG.info("reverse connection → %s (map=%s/%s)", callback_url, map_channel, map_cid)
+    LOG.info("reverse connection -> %s (map=%s/%s)", callback_url, map_channel, map_cid)
     try:
-        async with ClientRPC(base_url=callback_url, auth_token=BFF_TOKEN) as rpc:
+        async with ClientRPC(base_url=callback_url, auth_token=settings.bff_token) as rpc:
             req = JSONRPCRequest(method="bff.subscribe")
             map_ready = False
             flight_task: asyncio.Task[None] | None = None
@@ -283,7 +279,7 @@ async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str)
 
 @jrpc_service.request("flights.subscribe")
 async def flights_subscribe(info: RequestInfo, callback_url: str, map_channel: str, map_cid: str) -> asyncio.Queue:
-    """Establish BE→BFF SSE channel and spawn reverse connection."""
+    """Establish BE->BFF SSE channel and spawn reverse connection."""
     LOG.info("BFF subscribed: map=%s/%s, callback=%s", map_channel, map_cid, callback_url)
     queue: asyncio.Queue = asyncio.Queue(maxsize=256)
     asyncio.create_task(_reverse_connection(callback_url, map_channel, map_cid))
@@ -309,13 +305,3 @@ setup_rpc_docs(
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s[%(levelname)s] @%(module)s|%(name)s|%(funcName)s|%(lineno)d # %(message)s",
-        datefmt="%y%m%d %H:%M:%S",
-    )
-
-    uvicorn.run("flights_service:app", host="0.0.0.0", port=8300, reload=False)

@@ -2,8 +2,6 @@
 
 Exposes national park data via JSON-RPC over MCP.
 The BFF (PyView server) connects here on mount to fetch park data.
-
-    cd backends/places_backend && uv run uvicorn parks_service:app --host 0.0.0.0 --port 8200
 """
 
 import asyncio
@@ -16,10 +14,13 @@ from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
-from pyview_map.openrpc import setup_rpc_docs
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification
 
-from pyview_map.components.dynamic_list.models.list_events import (
+from places_backend.openrpc import setup_rpc_docs
+from places_backend.settings import settings
+from places_backend.parks import national_parks
+
+from places_backend.models.list_events import (
     NOTIFICATION_METHOD as LIST_NOTIFICATION_METHOD,
     ListItemClickEvent,
     ListItemOpEvent,
@@ -27,11 +28,7 @@ from pyview_map.components.dynamic_list.models.list_events import (
     parse_list_event,
 )
 
-from parks import national_parks
-
 LOG = logging.getLogger(__name__)
-
-BFF_TOKEN = "tok-acme-001"
 
 
 async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None:
@@ -46,10 +43,10 @@ async def _reverse_connection(
 ) -> None:
     """Connect back to the BFF: wait for components, populate list, react to events."""
     LOG.info(
-        "reverse connection → %s (list=%s/%s, map=%s/%s)", callback_url, list_channel, list_cid, map_channel, map_cid
+        "reverse connection -> %s (list=%s/%s, map=%s/%s)", callback_url, list_channel, list_cid, map_channel, map_cid
     )
     try:
-        async with ClientRPC(base_url=callback_url, auth_token=BFF_TOKEN) as rpc:
+        async with ClientRPC(base_url=callback_url, auth_token=settings.bff_token) as rpc:
             req = JSONRPCRequest(method="bff.subscribe")
             populated = False
 
@@ -81,7 +78,7 @@ async def _reverse_connection(
                             case ListItemOpEvent(op="add") if evt.channel == list_channel:
                                 park = national_parks.get(evt.id)
                                 if park:
-                                    LOG.info("list add → %s, adding marker", evt.id)
+                                    LOG.info("list add -> %s, adding marker", evt.id)
                                     await _send(
                                         rpc,
                                         "markers.add",
@@ -97,7 +94,7 @@ async def _reverse_connection(
                             case ListItemClickEvent() if evt.channel == list_channel and evt.cid == list_cid:
                                 park = national_parks.get(evt.id)
                                 if park:
-                                    LOG.info("click → %s, sending setView", evt.id)
+                                    LOG.info("click -> %s, sending setView", evt.id)
                                     await _send(
                                         rpc,
                                         "map.setView",
@@ -123,7 +120,7 @@ async def _reverse_connection(
 async def parks_subscribe(
     info: RequestInfo, callback_url: str, list_channel: str, list_cid: str, map_channel: str, map_cid: str
 ) -> asyncio.Queue:
-    """Establish BE→BFF SSE channel and spawn reverse connection."""
+    """Establish BE->BFF SSE channel and spawn reverse connection."""
     LOG.info(
         "BFF subscribed: list=%s/%s, map=%s/%s, callback=%s", list_channel, list_cid, map_channel, map_cid, callback_url
     )
@@ -155,13 +152,3 @@ setup_rpc_docs(
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s[%(levelname)s] @%(module)s|%(name)s|%(funcName)s|%(lineno)d # %(message)s",
-        datefmt="%y%m%d %H:%M:%S",
-    )
-
-    uvicorn.run("parks_service:app", host="0.0.0.0", port=8200, reload=False)
