@@ -62,6 +62,10 @@ class MapDriver:
         for topic in self._cmd_topics:
             await socket.subscribe(topic)
 
+    def disconnect(self):
+        """Clear retained events for this driver's channel."""
+        EventBroadcaster.clear_retained(f"map-ready:{self._channel}")
+
     async def handle_info(self, event: InfoEvent, socket) -> bool:
         """Process PubSub messages. Returns True if handled.
 

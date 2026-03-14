@@ -20,7 +20,13 @@ from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 from pyview_map.openrpc import setup_rpc_docs
-from jrpc_common.jrpc_model import JSONRPCRequest
+from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCNotification, JSONRPCResponse
+
+from pyview_map.components.dynamic_map.models.map_events import (
+    NOTIFICATION_METHOD as MAP_NOTIFICATION_METHOD,
+    MapReadyEvent,
+    parse_map_event,
+)
 
 from pyview_map.components.dynamic_map import DPolyline
 from pyview_map.components.dynamic_map.models.dmarker import DMarker
@@ -222,24 +228,47 @@ class Flight:
 
 
 async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str) -> None:
-    """Connect back to the BFF and push airport markers + live flight data."""
+    """Connect back to the BFF: wait for map ready, populate airports, run flights."""
     LOG.info("reverse connection → %s (map=%s/%s)", callback_url, map_channel, map_cid)
     try:
         async with ClientRPC(base_url=callback_url, auth_token=BFF_TOKEN) as rpc:
-            init_airport_markers()
+            req = JSONRPCRequest(method="bff.subscribe")
+            map_ready = False
+            flight_task: asyncio.Task[None] | None = None
 
-            # Add airport markers
-            for ap in airports:
-                assert ap.marker is not None
-                params = ap.marker.to_dict()
-                params["channel"] = map_channel
-                params["cid"] = map_cid
-                await _send(rpc, "markers.add", params)
-            LOG.info("Rendered %d airports", len(airports))
+            async for msg in rpc.send_request(req):
+                match msg:
+                    case JSONRPCNotification() if msg.method == MAP_NOTIFICATION_METHOD and isinstance(
+                        msg.params, dict
+                    ):
+                        evt = parse_map_event(msg.params)
+                        match evt:
+                            case MapReadyEvent() if evt.channel == map_channel and evt.cid == map_cid and not map_ready:
+                                map_ready = True
+                                LOG.info("map ready — adding %d airports and starting flight", len(airports))
+                                init_airport_markers()
 
-            # Create and run flight
-            flight = Flight.build_flight("YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500)
-            await flight.start(rpc, map_channel=map_channel, map_cid=map_cid)
+                                for ap in airports:
+                                    assert ap.marker is not None
+                                    params = ap.marker.to_dict()
+                                    params["channel"] = map_channel
+                                    params["cid"] = map_cid
+                                    await _send(rpc, "markers.add", params)
+                                LOG.info("Rendered %d airports", len(airports))
+
+                                flight = Flight.build_flight(
+                                    "YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500
+                                )
+                                flight_task = asyncio.create_task(
+                                    flight.start(rpc, map_channel=map_channel, map_cid=map_cid)
+                                )
+
+                    case JSONRPCResponse():
+                        LOG.info("reverse connection: event stream ended")
+                        break
+
+            if flight_task:
+                await flight_task
 
     except asyncio.CancelledError:
         LOG.info("reverse connection cancelled")

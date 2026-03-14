@@ -171,6 +171,9 @@ class MapReadyEvent:
     channel: str | None = None
     cid: str | None = None
 
+    def retained_key(self) -> str:
+        return f"map-ready:{self.channel}"
+
     def to_dict(self) -> dict:
         d: dict = {"type": "map-ready"}
         if self.channel is not None:

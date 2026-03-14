@@ -40,12 +40,13 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         self._list_component = ListDriver(f"{self.base_channel}-list", item_renderer=parks_item_renderer)
         self._map_component = MapDriver(f"{self.base_channel}-map")
         self._subscribe_task: asyncio.Task | None = None
+        self._list_ready = False
+        self._map_ready = False
         socket.context = PlacesViewContext()
 
         if socket.connected:
             await self._list_component.connect(socket)
             await self._map_component.connect(socket)
-            self._subscribe_task = asyncio.create_task(self._subscribe_to_parks())
 
     async def _subscribe_to_parks(self):
         """Open BE→BFF SSE channel via parks.subscribe.
@@ -94,10 +95,21 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         if summary:
             socket.context.last_event = summary
 
+        if event == "list-ready":
+            self._list_ready = True
+        elif event == "map-ready":
+            self._map_ready = True
+
+        if self._list_ready and self._map_ready and self._subscribe_task is None:
+            LOG.info("all components ready — subscribing to parks BE")
+            self._subscribe_task = asyncio.create_task(self._subscribe_to_parks())
+
     async def disconnect(self, socket: ConnectedLiveViewSocket[PlacesViewContext]):
         LOG.info("disconnecting")
         if self._subscribe_task and not self._subscribe_task.done():
             self._subscribe_task.cancel()
+        self._list_component.disconnect()
+        self._map_component.disconnect()
 
     def template(self, assigns: PlacesViewContext, meta: PyViewMeta):
 

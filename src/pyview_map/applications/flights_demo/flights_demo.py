@@ -35,7 +35,6 @@ class FlightsView(TemplateView, LiveView[FlightsViewContext]):
 
         if socket.connected:
             await self._map.connect(socket)
-            self._subscribe_task = asyncio.create_task(self._subscribe_to_flights())
 
     async def _subscribe_to_flights(self):
         """Open BE→BFF SSE channel via flights.subscribe.
@@ -74,10 +73,15 @@ class FlightsView(TemplateView, LiveView[FlightsViewContext]):
         if summary:
             socket.context.last_event = summary
 
+        if event == "map-ready" and self._subscribe_task is None:
+            LOG.info("map ready — subscribing to flights BE")
+            self._subscribe_task = asyncio.create_task(self._subscribe_to_flights())
+
     async def disconnect(self, socket: ConnectedLiveViewSocket[FlightsViewContext]):
         LOG.info("disconnecting")
         if self._subscribe_task and not self._subscribe_task.done():
             self._subscribe_task.cancel()
+        self._map.disconnect()
 
     def template(self, assigns: FlightsViewContext, meta: PyViewMeta):
         last_event = assigns.last_event

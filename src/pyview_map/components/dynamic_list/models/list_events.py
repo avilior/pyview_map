@@ -64,6 +64,9 @@ class ListReadyEvent:
     channel: str | None = None
     cid: str | None = None
 
+    def retained_key(self) -> str:
+        return f"list-ready:{self.channel}"
+
     def to_dict(self) -> dict:
         d: dict = {"type": "list-ready"}
         if self.channel is not None:
