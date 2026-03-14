@@ -1,18 +1,21 @@
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock* ./
 
 # Install dependencies (without the project itself)
-RUN --mount=type=ssh uv sync --no-install-project --frozen 2>/dev/null || uv sync --no-install-project
+RUN --mount=type=ssh mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
+    uv sync --no-install-project
 
 # Copy source code
 COPY src/ src/
 
 # Install the project
-RUN uv sync --frozen 2>/dev/null || uv sync
+RUN uv sync
 
 EXPOSE 80
 
