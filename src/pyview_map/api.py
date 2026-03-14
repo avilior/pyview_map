@@ -11,7 +11,7 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
-from pyview_map.openrpc import setup_rpc_docs
+from http_stream_transport.jsonrpc.openrpc import setup_rpc_docs
 
 # Import component API modules to register their JRPC methods on jrpc_service
 import pyview_map.components.dynamic_map.api.marker_api  # noqa: F401

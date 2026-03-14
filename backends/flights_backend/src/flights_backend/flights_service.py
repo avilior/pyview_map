@@ -10,7 +10,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Tuple, Self
 from dataclasses import dataclass
 
-import uvicorn
 from fastapi import FastAPI
 
 from http_stream_client.jsonrpc.client_sdk import ClientRPC
@@ -19,7 +18,7 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCNotification, JSONRPCResponse
 
-from flights_backend.openrpc import setup_rpc_docs
+from http_stream_transport.jsonrpc.openrpc import setup_rpc_docs
 from flights_backend.settings import settings
 from flights_backend.models.latlng import LatLng
 from flights_backend.models.dmarker import DMarker
@@ -237,7 +236,13 @@ async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str)
                     case JSONRPCNotification() if msg.method == MAP_NOTIFICATION_METHOD and isinstance(
                         msg.params, dict
                     ):
-                        evt = parse_map_event(msg.params)
+                        try:
+                            evt = parse_map_event(msg.params)
+                        except ValueError as e:
+                            LOG.warning("map event parse error: %s", e)
+                            evt = None
+                        if evt is None:
+                            continue
                         match evt:
                             case MapReadyEvent() if evt.channel == map_channel and evt.cid == map_cid and not map_ready:
                                 map_ready = True

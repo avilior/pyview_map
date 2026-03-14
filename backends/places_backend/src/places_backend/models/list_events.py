@@ -65,4 +65,4 @@ def parse_list_event(params: dict) -> ListBroadcastEvent:
         case "list-ready":
             return ListReadyEvent(channel=channel, cid=cid)
         case _:
-            raise ValueError(f"Unknown list event type: {etype}")
+            raise ValueError(f"Unhandled list event type: {etype}")

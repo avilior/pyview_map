@@ -20,8 +20,11 @@ class MapReadyEvent:
 MapBroadcastEvent = MapReadyEvent
 
 
-def parse_map_event(params: dict) -> MapBroadcastEvent:
-    """Parse a map event from notification params (subset used by flights BE)."""
+def parse_map_event(params: dict) -> MapBroadcastEvent | None:
+    """Parse a map event from notification params (subset used by flights BE).
+
+    Returns None for event types this BE doesn't handle.
+    """
     etype = params.get("type")
     channel = params.get("channel")
     cid = params.get("cid")
@@ -29,4 +32,4 @@ def parse_map_event(params: dict) -> MapBroadcastEvent:
         case "map-ready":
             return MapReadyEvent(channel=channel, cid=cid)
         case _:
-            raise ValueError(f"Unknown/unhandled map event type: {etype}")
+            raise ValueError(f"Unknown handled map event type: {etype}")

@@ -16,7 +16,7 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification
 
-from places_backend.openrpc import setup_rpc_docs
+from http_stream_transport.jsonrpc.openrpc import setup_rpc_docs
 from places_backend.settings import settings
 from places_backend.parks import national_parks
 
