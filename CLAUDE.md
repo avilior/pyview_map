@@ -24,6 +24,7 @@ src/pyview_map/
 ├── __main__.py          # Entry point — registers routes and starts uvicorn
 ├── app.py               # PyView app, StaticFiles mount, root template (Tailwind + Leaflet CDN)
 ├── api.py               # FastAPI sub-app, MCP router, health, cross-cutting subscriptions
+├── openrpc.py           # OpenRPC spec generator + /docs, /openrpc.json, rpc.discover
 ├── components/          # Reusable LiveComponents
 │   ├── shared/                  # Cross-component utilities
 │   │   ├── cid.py                # next_cid() — monotonic counter for channel instance IDs
@@ -365,6 +366,35 @@ Clients must complete the MCP lifecycle before calling methods:
 4. `POST /api/mcp` — call methods with `Mcp-Session-Id` header
 
 `ClientRPC` from `http_stream_client` handles this automatically via `async with`.
+
+### API documentation and discovery
+
+Each service (BFF, Parks BE, Flights BE) auto-generates API documentation from
+registered JRPC methods using `openrpc.py`. The spec is built from `MethodRecord`
+metadata (param schemas, return types, docstrings) already captured by `JRPCService`.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/docs` | Interactive HTML explorer — browse methods, view params, send test requests |
+| `GET /api/openrpc.json` | Machine-readable [OpenRPC 1.3.2](https://open-rpc.org/) spec |
+| `rpc.discover` (via MCP) | Same spec, accessible to any MCP client |
+
+Setup is one call per service:
+
+```python
+from pyview_map.openrpc import setup_rpc_docs
+
+# BFF (api_app is a sub-app mounted at /api, so no prefix needed):
+setup_rpc_docs(api_app, jrpc_service, title="dmap BFF", description="...")
+
+# Backends (routes added to main app, prefix="/api"):
+setup_rpc_docs(app, jrpc_service, title="Parks Service", description="...", prefix="/api")
+```
+
+The spec is generated lazily on first request and cached. Internal MCP lifecycle
+methods (`initialize`, `notifications/initialized`) and `rpc.discover` itself are
+excluded. Streaming methods (returning `asyncio.Queue`) are tagged with
+`x-streaming: true`.
 
 ### Methods
 

@@ -100,3 +100,17 @@ data, not in the rendering layer.
 The UI is a passive rendering surface — it has no idea what parks are or where
 they are. It just knows how to display list items and map markers. The Parks
 Service decides what to show and how to react to user actions.
+
+## API Discovery
+
+Each service exposes auto-generated API documentation:
+
+| Service | Docs URL | Spec URL |
+|---|---|---|
+| BFF (`:8123`) | `/api/docs` | `/api/openrpc.json` |
+| Parks BE (`:8200`) | `/api/docs` | `/api/openrpc.json` |
+| Flights BE (`:8300`) | `/api/docs` | `/api/openrpc.json` |
+
+The spec is also available via the `rpc.discover` JSON-RPC method (MCP clients).
+Each service's spec only includes that service's own methods — the BFF shows
+marker/polyline/list/map commands, while each BE shows its subscribe + list methods.

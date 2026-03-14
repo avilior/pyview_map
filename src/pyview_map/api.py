@@ -11,6 +11,7 @@ from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
 
 from pyview_map.components.shared.event_broadcaster import EventBroadcaster
+from pyview_map.openrpc import setup_rpc_docs
 
 # Import component API modules to register their JRPC methods on jrpc_service
 import pyview_map.components.dynamic_map.api.marker_api  # noqa: F401
@@ -28,8 +29,15 @@ async def bff_subscribe() -> asyncio.Queue:
 
 # -- FastAPI sub-app mounted at /api in __main__.py ---------------------------
 
-api_app = FastAPI(title="dmap Marker API")
+api_app = FastAPI(title="dmap BFF", docs_url=None, redoc_url=None)
 api_app.include_router(mcp_router)
+
+setup_rpc_docs(
+    api_app,
+    jrpc_service,
+    title="dmap BFF",
+    description="PyView LiveView map demo — marker, polyline, list, and map command APIs",
+)
 
 
 @api_app.get("/health")

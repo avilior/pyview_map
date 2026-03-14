@@ -16,6 +16,7 @@ from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
+from pyview_map.openrpc import setup_rpc_docs
 from jrpc_common.jrpc_model import JSONRPCRequest, JSONRPCResponse, JSONRPCNotification
 
 from pyview_map.components.dynamic_list.models.list_events import (
@@ -136,6 +137,14 @@ def parks_list() -> list[dict]:
 
 app = FastAPI(title="Parks Service")
 app.include_router(mcp_router, prefix="/api")
+
+setup_rpc_docs(
+    app,
+    jrpc_service,
+    title="Parks Service",
+    description="National parks data backend — exposes park data via JSON-RPC",
+    prefix="/api",
+)
 
 
 @app.get("/api/health")

@@ -19,6 +19,7 @@ from http_stream_client.jsonrpc.client_sdk import ClientRPC
 from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
 from http_stream_transport.server.mcp_router import router as mcp_router
+from pyview_map.openrpc import setup_rpc_docs
 from jrpc_common.jrpc_model import JSONRPCRequest
 
 from pyview_map.components.dynamic_map import DPolyline
@@ -254,6 +255,14 @@ async def flights_subscribe(
 
 app = FastAPI(title="Flights Service")
 app.include_router(mcp_router, prefix="/api")
+
+setup_rpc_docs(
+    app,
+    jrpc_service,
+    title="Flights Service",
+    description="Flight simulation backend — pushes real-time aircraft positions via JSON-RPC",
+    prefix="/api",
+)
 
 
 @app.get("/api/health")

@@ -2,15 +2,17 @@
 
 A demo app built with [PyView](https://github.com/ogrodnek/pyview) showing how to build interactive and real-time maps using [Leaflet.js](https://leafletjs.com/) and LiveView.
 
-## Views
+Uses a **BFF/BE architecture**: the PyView server (BFF) hosts LiveView pages,
+while backend services push data via reverse JSON-RPC connections. See
+[`docs/architecture_bff_be.md`](docs/architecture_bff_be.md) for the full design.
 
-### `/map` — National Park Planner
-A static Leaflet map with a sidebar of US national parks. Clicking a park pans the map and opens a popup. Demonstrates bidirectional LiveView events: client → server (`phx-click`) and server → client (`push_event`).
+## Routes
 
-### `/dmap` — Dynamic Marker Map
-A real-time tracking map where markers stream in from the server — appearing, moving, and disappearing continuously. Features a day/night terminator overlay and a live activity log. All Leaflet marker and map events are forwarded to the server.
-
-`/dmap` is built as a **generic framework**: it knows nothing about where markers come from. Implement the `MarkerSource` protocol to feed any data in. The default setup uses `APIMarkerSource`, which receives marker updates from external clients via a **JSON-RPC HTTP API** mounted at `/api/rpc`.
+| Route | Description |
+|---|---|
+| `/flights` | Flight simulation — live aircraft tracking with polyline routes |
+| `/places_demo` | National parks list + map — click a park to fly there |
+| `/api/docs` | Interactive JSON-RPC API explorer |
 
 ## Requirements
 
@@ -25,113 +27,77 @@ git clone https://github.com/avilior/pyview_map
 cd pyview_map
 
 just install    # uv sync
-just dmap       # start server and open /dmap in the browser
+just run        # start the BFF server
 ```
 
-Other just commands:
+The BFF starts at `http://localhost:8123`. To run with a backend:
 
-```
-just run        # start the server
-just stop       # stop the server
-just open-dmap  # open /dmap in the browser
+```bash
+# Terminal 1 — BFF
+uv run pyview-map
+
+# Terminal 2 — Parks backend (for /places_demo)
+cd backends/places_backend && uv run uvicorn parks_service:app --port 8200
+
+# Terminal 3 — Flights backend (for /flights)
+cd backends/flights_backend && uv run uvicorn flights_service:app --port 8300
 ```
 
 ## JSON-RPC API
 
-The server exposes a JSON-RPC 2.0 endpoint at `POST /api/rpc`. External clients push marker operations and the LiveView streams them to all connected browsers in real time.
+The BFF exposes a JSON-RPC 2.0 endpoint at `POST /api/mcp` (MCP transport).
+External clients push marker/polyline/list operations and the LiveView streams
+them to all connected browsers in real time.
 
-### Methods
+### API documentation
 
-| Method | Params | Description |
+Each service auto-generates API docs from its registered method signatures:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/docs` | Interactive HTML explorer — browse methods, params, send test requests |
+| `GET /api/openrpc.json` | Machine-readable [OpenRPC 1.3.2](https://open-rpc.org/) spec |
+| `rpc.discover` (via MCP) | Same spec, accessible to any MCP client |
+
+Browse to `http://localhost:8123/api/docs` to explore the BFF's 26 methods
+(markers, polylines, list, map commands). Each backend has its own docs at
+`:8200/api/docs` and `:8300/api/docs`.
+
+### Authentication
+
+All requests to `/api/mcp` require a Bearer token:
+```
+Authorization: Bearer tok-acme-001
+```
+
+Pre-configured mock tokens: `tok-acme-001` (Acme Corp), `tok-globex-002`, `tok-initech-003`.
+
+### Methods overview
+
+| Namespace | Methods | Description |
 |---|---|---|
-| `markers.add` | `id`, `name`, `latLng` | Add a new marker |
-| `markers.update` | `id`, `name`, `latLng` | Move / rename a marker |
-| `markers.delete` | `id` | Remove a marker |
-| `markers.list` | — | Return all current markers |
+| `markers.*` | add, update, delete, list | Marker CRUD on the map |
+| `polylines.*` | add, update, delete, list | Polyline CRUD on the map |
+| `map.*` | setView, panTo, flyTo, fitBounds, flyToBounds, setZoom, resetView, highlightMarker, highlightPolyline, followMarker, unfollowMarker | Browser map control |
+| `list.*` | add, remove, clear, highlight, list | List component CRUD |
+| `bff.subscribe` | — | SSE stream of all events |
+| `list.subscribe` | — | SSE stream of list events |
 
-### Example
-
-```bash
-curl -X POST http://localhost:8123/api/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"markers.add","params":{"id":"hq","name":"HQ","latLng":[40.7,-74.0]},"id":1}'
-```
-
-## How the streaming map works
-
-Each marker is a `DMarker` dataclass with an `id`, `name`, and `lat_lng`. On every tick the source returns one operation and the server mutates a `Stream[DMarker]`. PyView sends only the diff over the WebSocket; the JS hook lifecycle drives Leaflet directly.
-
-```
-External client                      Server                               Browser
-───────────────                      ──────                               ───────
-POST /api/rpc markers.add
-                               APIMarkerSource._queue
-                                 source.next_update()
-                                   → stream.insert()        ──▶  DMarkItem.mounted()   → L.marker().addTo(map)
-                                   → stream.insert(update)  ──▶  DMarkItem.updated()   → marker.setLatLng()
-                                   → stream.delete_by_id()  ──▶  DMarkItem.destroyed() → marker.remove()
-
-                                                            Leaflet event (click, drag…)
-                                                                                 ──▶  pushEvent("marker-event")
-                                                                                 ──▶  handle_event() on server
-```
-
-## Plugging in a custom data source
-
-Implement the `MarkerSource` protocol and register it with `with_source()`:
-
-```python
-from pyview_map.components.dynamic_map.dynamic_map_component import DMarker
-
-
-class MySource:
-    @property
-    def markers(self) -> list[DMarker]:
-        """Initial markers shown on mount."""
-        return [DMarker(id="hq", name="HQ", lat_lng=[40.7, -74.0])]
-
-    def next_update(self) -> dict:
-        """Called on every tick. Return one operation."""
-        # {"op": "add",    "id": str, "name": str, "latLng": [lat, lng]}
-        # {"op": "delete", "id": str}
-        # {"op": "update", "id": str, "name": str, "latLng": [lat, lng]}
-        # {"op": "noop"}   ← return this when there is nothing to do
-        ...
-```
-
-Register in `__main__.py`:
-
-```python
-app.add_live_view("/mymap", DynamicMapLiveView.with_source(MySource))
-
-# Pass constructor kwargs and override the tick interval (seconds):
-app.add_live_view("/fleet", DynamicMapLiveView.with_source(FleetTracker, tick_interval=2.0, fleet_id=42))
-```
-
-`MockGenerator` in `mock_generator.py` and `APIMarkerSource` in `api_marker_source.py` are both reference implementations.
+See [`CLAUDE.md`](CLAUDE.md) for full parameter details, architecture docs, and development conventions.
 
 ## Project structure
 
 ```
 src/pyview_map/
-├── app.py                          # PyView app + root template (Tailwind, Leaflet, Terminator CDN)
-├── __main__.py                     # Entry point — registers routes and starts uvicorn
-└── views/
-    ├── maps/                       # /map
-    │   ├── map.py
-    │   ├── map.html
-    │   ├── parks.py
-    │   └── static/map.js
-    └── dynamic_map/                # /dmap
-        ├── dynamic_map.py          # DynamicMapLiveView (generic) + MarkerSource protocol
-        ├── dynamic_map.html
-        ├── mock_generator.py       # In-process MarkerSource — simulates moving vehicles
-        ├── api_marker_source.py    # MarkerSource backed by a class-level asyncio.Queue
-        ├── marker_api.py           # FastAPI sub-app — JSON-RPC 2.0 endpoint at /api/rpc
-        └── static/dynamic_map.js
+├── __main__.py          # Entry point — registers routes and starts uvicorn
+├── app.py               # PyView app, StaticFiles mount, root template
+├── api.py               # FastAPI sub-app, MCP router, health endpoint
+├── openrpc.py           # OpenRPC spec generator + docs/discovery endpoints
+├── components/          # Reusable LiveComponents (dynamic_map, dynamic_list)
+└── applications/        # Front-end pages (flights_demo, places_demo)
 backends/
-├── places_backend/                 # Parks BE — populates /places_demo list + map
-└── flights_backend/                # Flights BE — simulates flights for /flights
+├── places_backend/      # Parks BE — populates /places_demo list + map
+└── flights_backend/     # Flights BE — simulates flights for /flights
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for development conventions and deeper implementation notes.
+See [`CLAUDE.md`](CLAUDE.md) for the full project layout.
