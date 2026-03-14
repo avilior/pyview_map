@@ -13,16 +13,16 @@ from pyview_map.components.shared.topics import list_ops_topic, list_cmd_topic
 
 @jrpc_service.request("list.add")
 async def list_add(
-    id: str, label: str, channel: str,
-    subtitle: str = "", at: int = -1, cid: str = "*",
-    data: dict | None = None,
+    id: str, label: str, channel: str, subtitle: str = "", at: int = -1, cid: str = "*", data: dict | None = None
 ) -> dict:
     item_data = data or {}
     item = DListItem(id=id, label=label, subtitle=subtitle, data=item_data)
     op = {"op": "add", "id": id, "label": label, "subtitle": subtitle, "at": at, "data": item_data}
     list_store.store(op, channel=channel, item=item)
     await pub_sub_hub.send_all_on_topic_async(list_ops_topic(channel, cid), op)
-    EventBroadcaster.broadcast(ListItemOpEvent(op="add", id=id, label=label, subtitle=subtitle, at=at, channel=channel, cid=cid))
+    EventBroadcaster.broadcast(
+        ListItemOpEvent(op="add", id=id, label=label, subtitle=subtitle, at=at, channel=channel, cid=cid)
+    )
     return {"ok": True}
 
 
@@ -53,7 +53,13 @@ async def list_highlight(id: str, channel: str, cid: str = "*") -> dict:
 
 @jrpc_service.request("list.list")
 def list_list(channel: str) -> dict:
-    return {"items": [{"id": item.id, "label": item.label, "subtitle": item.subtitle, "data": item.data} for item in list_store.channel_items(channel).values()]}
+    return {
+        "items": [
+            {"id": item.id, "label": item.label, "subtitle": item.subtitle, "data": item.data}
+            for item in list_store.channel_items(channel).values()
+        ]
+    }
+
 
 @jrpc_service.request("list.subscribe")
 async def list_subscribe() -> asyncio.Queue:

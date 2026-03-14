@@ -1,4 +1,3 @@
-
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -17,6 +16,7 @@ from pyview_map.components.shared.latlng import LatLng
 # DynamicMapComponent — renders a single Leaflet map with marker/polyline streams
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DynamicMapComponentContext:
     markers: Stream[DMarker]
@@ -31,23 +31,30 @@ def _apply_marker_ops(markers: Stream[DMarker], ops: list[dict], *, stream_name:
     for op_dict in ops:
         op = op_dict["op"]
         if op == "add":
-            markers.insert(DMarker(
-                id=op_dict["id"], name=op_dict["name"],
-                lat_lng=LatLng.from_list(op_dict["latLng"]),
-                icon=op_dict.get("icon", "default"),
-                heading=op_dict.get("heading"),
-                speed=op_dict.get("speed"),
-            ))
+            markers.insert(
+                DMarker(
+                    id=op_dict["id"],
+                    name=op_dict["name"],
+                    lat_lng=LatLng.from_list(op_dict["latLng"]),
+                    icon=op_dict.get("icon", "default"),
+                    heading=op_dict.get("heading"),
+                    speed=op_dict.get("speed"),
+                )
+            )
         elif op == "delete":
             markers.delete_by_id(f"{stream_name}-{op_dict['id']}")
         elif op == "update":
-            markers.insert(DMarker(
-                id=op_dict["id"], name=op_dict["name"],
-                lat_lng=LatLng.from_list(op_dict["latLng"]),
-                icon=op_dict.get("icon", "default"),
-                heading=op_dict.get("heading"),
-                speed=op_dict.get("speed"),
-            ), update_only=True)
+            markers.insert(
+                DMarker(
+                    id=op_dict["id"],
+                    name=op_dict["name"],
+                    lat_lng=LatLng.from_list(op_dict["latLng"]),
+                    icon=op_dict.get("icon", "default"),
+                    heading=op_dict.get("heading"),
+                    speed=op_dict.get("speed"),
+                ),
+                update_only=True,
+            )
 
 
 def _apply_polyline_ops(polylines: Stream[DPolyline], ops: list[dict], *, stream_name: str = "polylines") -> None:
@@ -55,25 +62,32 @@ def _apply_polyline_ops(polylines: Stream[DPolyline], ops: list[dict], *, stream
     for op_dict in ops:
         op = op_dict["op"]
         if op == "add":
-            polylines.insert(DPolyline(
-                id=op_dict["id"], name=op_dict["name"],
-                path=[LatLng.from_list(p) for p in op_dict["path"]],
-                color=op_dict.get("color", "#3388ff"),
-                weight=op_dict.get("weight", 3),
-                opacity=op_dict.get("opacity", 1.0),
-                dash_array=op_dict.get("dashArray"),
-            ))
+            polylines.insert(
+                DPolyline(
+                    id=op_dict["id"],
+                    name=op_dict["name"],
+                    path=[LatLng.from_list(p) for p in op_dict["path"]],
+                    color=op_dict.get("color", "#3388ff"),
+                    weight=op_dict.get("weight", 3),
+                    opacity=op_dict.get("opacity", 1.0),
+                    dash_array=op_dict.get("dashArray"),
+                )
+            )
         elif op == "delete":
             polylines.delete_by_id(f"{stream_name}-{op_dict['id']}")
         elif op == "update":
-            polylines.insert(DPolyline(
-                id=op_dict["id"], name=op_dict["name"],
-                path=[LatLng.from_list(p) for p in op_dict["path"]],
-                color=op_dict.get("color", "#3388ff"),
-                weight=op_dict.get("weight", 3),
-                opacity=op_dict.get("opacity", 1.0),
-                dash_array=op_dict.get("dashArray"),
-            ), update_only=True)
+            polylines.insert(
+                DPolyline(
+                    id=op_dict["id"],
+                    name=op_dict["name"],
+                    path=[LatLng.from_list(p) for p in op_dict["path"]],
+                    color=op_dict.get("color", "#3388ff"),
+                    weight=op_dict.get("weight", 3),
+                    opacity=op_dict.get("opacity", 1.0),
+                    dash_array=op_dict.get("dashArray"),
+                ),
+                update_only=True,
+            )
 
 
 class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
@@ -114,12 +128,18 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
         markers_id = f"{channel}-markers"
         polylines_id = f"{channel}-polylines"
 
-        markers_html = stream_for(assigns.markers, lambda dom_id, marker:
-            t'<div id="{dom_id}" phx-hook="DMarkItem" data-name="{marker.name}" data-lat="{marker.lat}" data-lng="{marker.lng}" data-icon="{marker.icon}" data-heading="{marker.heading}" data-speed="{marker.speed}"></div>'
+        markers_html = stream_for(
+            assigns.markers,
+            lambda dom_id, marker: (
+                t'<div id="{dom_id}" phx-hook="DMarkItem" data-name="{marker.name}" data-lat="{marker.lat}" data-lng="{marker.lng}" data-icon="{marker.icon}" data-heading="{marker.heading}" data-speed="{marker.speed}"></div>'
+            ),
         )
 
-        polylines_html = stream_for(assigns.polylines, lambda dom_id, polyline:
-            t'<div id="{dom_id}" phx-hook="DPolylineItem" data-name="{polyline.name}" data-path="{json.dumps(polyline.path_as_lists)}" data-color="{polyline.color}" data-weight="{polyline.weight}" data-opacity="{polyline.opacity}" data-dash-array="{polyline.dash_array}"></div>'
+        polylines_html = stream_for(
+            assigns.polylines,
+            lambda dom_id, polyline: (
+                t'<div id="{dom_id}" phx-hook="DPolylineItem" data-name="{polyline.name}" data-path="{json.dumps(polyline.path_as_lists)}" data-color="{polyline.color}" data-weight="{polyline.weight}" data-opacity="{polyline.opacity}" data-dash-array="{polyline.dash_array}"></div>'
+            ),
         )
 
         return t"""<div data-channel="{channel}">
@@ -137,5 +157,3 @@ class DynamicMapComponent(LiveComponent[DynamicMapComponentContext]):
         {polylines_html}
     </div>
 </div>"""
-
-

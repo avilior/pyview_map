@@ -9,11 +9,8 @@ EARTH_RADIUS_NM = 3440.065  # nautical miles
 def latlng_degree_to_rad(latlng_degrees: LatLng):
     return LatLng(lat=math.radians(latlng_degrees.lat), lng=math.radians(latlng_degrees.lng))
 
-def _great_circle_fraction_point(
-    from_latlng: LatLng,
-    to_latlng: LatLng,
-    f: float
-) -> LatLng:
+
+def _great_circle_fraction_point(from_latlng: LatLng, to_latlng: LatLng, f: float) -> LatLng:
     """
     Point at fraction f along great-circle from (lat1,lon1) to (lat2,lon2).
     f=0 -> start, f=1 -> end.
@@ -46,11 +43,7 @@ def _great_circle_fraction_point(
 
 
 def great_circle_position_at_time(
-    from_latlng: LatLng,
-    to_latlng: LatLng,
-    ground_speed_knots: float,
-    start_time: datetime,
-    current_time: datetime
+    from_latlng: LatLng, to_latlng: LatLng, ground_speed_knots: float, start_time: datetime, current_time: datetime
 ) -> LatLng:
     """
     Return aircraft position at current_time along great-circle between two points.
@@ -88,7 +81,7 @@ def great_circle_flight_generator(
     to_latlng: LatLng,
     ground_speed_knots: float,
     start_time: datetime,
-    step: timedelta = timedelta(minutes=1)
+    step: timedelta = timedelta(minutes=1),
 ) -> Iterator[Tuple[datetime, LatLng]]:
     """
     Generator yielding (timestamp, lat, lon) along great-circle route

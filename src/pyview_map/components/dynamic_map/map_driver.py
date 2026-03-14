@@ -154,16 +154,16 @@ class MapDriver:
             return detail
 
         elif event == "map-ready":
-            EventBroadcaster.broadcast(MapReadyEvent(
-                channel=self._channel, cid=self._cid,
-            ))
+            EventBroadcaster.broadcast(MapReadyEvent(channel=self._channel, cid=self._cid))
             return "map ready"
 
         return None
 
     def render(self):
         """Return live_component() call with current state."""
-        return live_component(DynamicMapComponent, id=self._channel,
+        return live_component(
+            DynamicMapComponent,
+            id=self._channel,
             initial_markers=self._initial_markers,
             initial_polylines=self._initial_polylines,
             icon_registry_json=self._icon_registry_json,

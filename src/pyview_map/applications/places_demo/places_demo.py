@@ -34,7 +34,6 @@ class PlacesViewContext:
 
 
 class PlacesView(TemplateView, LiveView[PlacesViewContext]):
-
     base_channel: str = "places"
 
     async def mount(self, socket: LiveViewSocket[PlacesViewContext], session: Session):
@@ -106,7 +105,11 @@ class PlacesView(TemplateView, LiveView[PlacesViewContext]):
         list_comp = self._list_component.render()
         map_comp = self._map_component.render()
 
-        event_line = t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>' if last_event else t'<div class="text-xs text-gray-400">No events yet</div>'
+        event_line = (
+            t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>'
+            if last_event
+            else t'<div class="text-xs text-gray-400">No events yet</div>'
+        )
 
         return t"""<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">

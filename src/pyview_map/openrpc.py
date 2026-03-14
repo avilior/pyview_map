@@ -18,11 +18,7 @@ from http_stream_transport.jsonrpc.handler_meta import MethodRecord
 
 
 def generate_openrpc(
-    service: JRPCService,
-    *,
-    title: str,
-    version: str = "1.0.0",
-    description: str = "",
+    service: JRPCService, *, title: str, version: str = "1.0.0", description: str = ""
 ) -> dict[str, Any]:
     """Build an OpenRPC 1.3.2 document from registered JRPC methods."""
     # Skip internal MCP lifecycle methods and rpc.discover itself
@@ -33,11 +29,7 @@ def generate_openrpc(
             continue
         methods.append(_method_object(record))
 
-    doc: dict[str, Any] = {
-        "openrpc": "1.3.2",
-        "info": {"title": title, "version": version},
-        "methods": methods,
-    }
+    doc: dict[str, Any] = {"openrpc": "1.3.2", "info": {"title": title, "version": version}, "methods": methods}
     if description:
         doc["info"]["description"] = description
     return doc
@@ -59,10 +51,7 @@ def _method_object(record: MethodRecord) -> dict[str, Any]:
     is_streaming = record.handler_meta.return_type is asyncio.Queue
     if is_streaming:
         method["x-streaming"] = True
-        method["result"] = {
-            "name": "result",
-            "schema": {"type": "object", "description": "SSE event stream"},
-        }
+        method["result"] = {"name": "result", "schema": {"type": "object", "description": "SSE event stream"}}
     elif record.return_schema:
         method["result"] = {"name": "result", "schema": record.return_schema}
     else:
@@ -79,9 +68,7 @@ def _method_object(record: MethodRecord) -> dict[str, Any]:
 # -- Schema helpers -----------------------------------------------------------
 
 
-def _params_from_schema(
-    param_schema: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
+def _params_from_schema(param_schema: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Convert Pydantic JSON Schema to OpenRPC ContentDescriptor array."""
     if not param_schema:
         return []
@@ -94,9 +81,7 @@ def _params_from_schema(
     for name, prop_schema in properties.items():
         resolved = _resolve_refs(prop_schema, defs)
         schema = {k: v for k, v in resolved.items() if k != "title"}
-        params.append(
-            {"name": name, "required": name in required_set, "schema": schema}
-        )
+        params.append({"name": name, "required": name in required_set, "schema": schema})
     return params
 
 
@@ -116,12 +101,8 @@ def _resolve_refs(schema: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any
             result[key] = [_resolve_refs(s, defs) for s in result[key]]
     if "items" in result and isinstance(result["items"], dict):
         result["items"] = _resolve_refs(result["items"], defs)
-    if "additionalProperties" in result and isinstance(
-        result["additionalProperties"], dict
-    ):
-        result["additionalProperties"] = _resolve_refs(
-            result["additionalProperties"], defs
-        )
+    if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
+        result["additionalProperties"] = _resolve_refs(result["additionalProperties"], defs)
     return result
 
 
@@ -129,13 +110,7 @@ def _resolve_refs(schema: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any
 
 
 def setup_rpc_docs(
-    app: FastAPI,
-    service: JRPCService,
-    *,
-    title: str,
-    version: str = "1.0.0",
-    description: str = "",
-    prefix: str = "",
+    app: FastAPI, service: JRPCService, *, title: str, version: str = "1.0.0", description: str = "", prefix: str = ""
 ) -> None:
     """One-call setup: registers rpc.discover, adds /openrpc.json and /docs routes.
 
@@ -151,9 +126,7 @@ def setup_rpc_docs(
 
     def _get_spec() -> dict[str, Any]:
         if "spec" not in _cache:
-            _cache["spec"] = generate_openrpc(
-                service, title=title, version=version, description=description
-            )
+            _cache["spec"] = generate_openrpc(service, title=title, version=version, description=description)
         return _cache["spec"]
 
     @service.request("rpc.discover")

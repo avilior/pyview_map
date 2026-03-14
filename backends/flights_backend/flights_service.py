@@ -36,6 +36,7 @@ BFF_TOKEN = "tok-acme-001"
 # Helper
 # ---------------------------------------------------------------------------
 
+
 async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None:
     """Fire a JSON-RPC request and consume the response."""
     req = JSONRPCRequest(method=method, params=params or {})
@@ -46,6 +47,7 @@ async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Airport:
@@ -85,10 +87,7 @@ AIRPORT_REGISTRY = {ap.name: ap for ap in airports}
 
 def init_airport_markers():
     for idx, ap in enumerate(airports):
-        ap.marker = DMarker(
-            id=f"ap_{idx + 1}_{ap.name}", name=ap.name,
-            lat_lng=ap.latlng, icon="black-square",
-        )
+        ap.marker = DMarker(id=f"ap_{idx + 1}_{ap.name}", name=ap.name, lat_lng=ap.latlng, icon="black-square")
 
 
 @dataclass
@@ -98,12 +97,17 @@ class Plane:
 
 
 class Flight:
-
-    def __init__(self, id: str, plane: Plane, origin: Airport, destination: Airport,
-                 departure_time: datetime | None = None,
-                 arrival_time: datetime | None = None,
-                 planned_route: list[Tuple[datetime, LatLng]] | None = None,
-                 last_position: LatLng | None = None) -> None:
+    def __init__(
+        self,
+        id: str,
+        plane: Plane,
+        origin: Airport,
+        destination: Airport,
+        departure_time: datetime | None = None,
+        arrival_time: datetime | None = None,
+        planned_route: list[Tuple[datetime, LatLng]] | None = None,
+        last_position: LatLng | None = None,
+    ) -> None:
 
         self.id = id
         self.plane = plane
@@ -117,24 +121,38 @@ class Flight:
         self.flight_completed: bool = False
 
     @classmethod
-    def build_flight(cls, origin_airport_name: str, destination_airport_name: str, flight_id: str, plane_id: str, ground_speed_knots: int) -> Self:
+    def build_flight(
+        cls,
+        origin_airport_name: str,
+        destination_airport_name: str,
+        flight_id: str,
+        plane_id: str,
+        ground_speed_knots: int,
+    ) -> Self:
 
         origin_airport = AIRPORT_REGISTRY[origin_airport_name]
         destination_airport = AIRPORT_REGISTRY[destination_airport_name]
 
-        planned_route = list(great_circle_flight_generator(
-            from_latlng=origin_airport.latlng,
-            to_latlng=destination_airport.latlng,
-            ground_speed_knots=ground_speed_knots,
-            start_time=datetime.now(timezone.utc),
-            step=timedelta(minutes=1),
-        ))
+        planned_route = list(
+            great_circle_flight_generator(
+                from_latlng=origin_airport.latlng,
+                to_latlng=destination_airport.latlng,
+                ground_speed_knots=ground_speed_knots,
+                start_time=datetime.now(timezone.utc),
+                step=timedelta(minutes=1),
+            )
+        )
 
         heading = bearing_deg(from_latlng=origin_airport.latlng, to_latlng=destination_airport.latlng)
 
-        plane_marker = DMarker(id=plane_id, name=plane_id,
-                               lat_lng=origin_airport.latlng, icon="airplane",
-                               speed=ground_speed_knots, heading=heading)
+        plane_marker = DMarker(
+            id=plane_id,
+            name=plane_id,
+            lat_lng=origin_airport.latlng,
+            icon="airplane",
+            speed=ground_speed_knots,
+            heading=heading,
+        )
 
         plane = Plane(id=plane_id, marker=plane_marker)
 
@@ -201,12 +219,12 @@ class Flight:
 # Reverse connection (BE → BFF)
 # ---------------------------------------------------------------------------
 
+
 async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str) -> None:
     """Connect back to the BFF and push airport markers + live flight data."""
     LOG.info("reverse connection → %s (map=%s/%s)", callback_url, map_channel, map_cid)
     try:
         async with ClientRPC(base_url=callback_url, auth_token=BFF_TOKEN) as rpc:
-
             init_airport_markers()
 
             # Add airport markers
@@ -218,11 +236,7 @@ async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str)
             LOG.info("Rendered %d airports", len(airports))
 
             # Create and run flight
-            flight = Flight.build_flight(
-                "YOW", "YUL",
-                flight_id="flight1", plane_id="plane1",
-                ground_speed_knots=500,
-            )
+            flight = Flight.build_flight("YOW", "YUL", flight_id="flight1", plane_id="plane1", ground_speed_knots=500)
             await flight.start(rpc, map_channel=map_channel, map_cid=map_cid)
 
     except asyncio.CancelledError:
@@ -235,13 +249,9 @@ async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str)
 # JRPC method — BFF calls this on mount
 # ---------------------------------------------------------------------------
 
+
 @jrpc_service.request("flights.subscribe")
-async def flights_subscribe(
-    info: RequestInfo,
-    callback_url: str,
-    map_channel: str,
-    map_cid: str,
-) -> asyncio.Queue:
+async def flights_subscribe(info: RequestInfo, callback_url: str, map_channel: str, map_cid: str) -> asyncio.Queue:
     """Establish BE→BFF SSE channel and spawn reverse connection."""
     LOG.info("BFF subscribed: map=%s/%s, callback=%s", map_channel, map_cid, callback_url)
     queue: asyncio.Queue = asyncio.Queue(maxsize=256)

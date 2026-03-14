@@ -6,6 +6,7 @@ from jrpc_common.jrpc_model import JSONRPCNotification
 
 class Broadcastable(Protocol):
     notification_method: str
+
     def to_dict(self) -> dict: ...
 
 
@@ -31,10 +32,7 @@ class EventBroadcaster:
     @classmethod
     def broadcast(cls, event: Broadcastable) -> None:
         dead: list[asyncio.Queue] = []
-        notification = JSONRPCNotification(
-            method=event.notification_method,
-            params=event.to_dict(),
-        )
+        notification = JSONRPCNotification(method=event.notification_method, params=event.to_dict())
         for q in cls._subscribers:
             try:
                 q.put_nowait(notification)

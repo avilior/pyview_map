@@ -22,6 +22,7 @@ import pyview_map.components.dynamic_list.api.list_api  # noqa: F401
 
 # -- Cross-cutting subscriptions ---------------------------------------------
 
+
 @jrpc_service.request("bff.subscribe")
 async def bff_subscribe() -> asyncio.Queue:
     return EventBroadcaster.subscribe()

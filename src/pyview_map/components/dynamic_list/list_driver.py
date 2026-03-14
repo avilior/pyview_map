@@ -97,22 +97,19 @@ class ListDriver:
         if event == "item-click":
             item_id = payload.get("id", "")
             label = payload.get("label", "")
-            evt = ListItemClickEvent(
-                event="click", id=item_id, label=label,
-                channel=self._channel, cid=self._cid,
-            )
+            evt = ListItemClickEvent(event="click", id=item_id, label=label, channel=self._channel, cid=self._cid)
             EventBroadcaster.broadcast(evt)
             return f"click → {label}"
         elif event == "list-ready":
-            EventBroadcaster.broadcast(ListReadyEvent(
-                channel=self._channel, cid=self._cid,
-            ))
+            EventBroadcaster.broadcast(ListReadyEvent(channel=self._channel, cid=self._cid))
             return "list ready"
         return None
 
     def render(self):
         """Return live_component() call with current state."""
-        return live_component(DynamicListComponent, id=self._channel,
+        return live_component(
+            DynamicListComponent,
+            id=self._channel,
             initial_items=self._initial_items,
             list_ops=self._list_ops,
             ops_version=self._ops_version,

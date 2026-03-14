@@ -12,8 +12,13 @@ from pyview_map.components.dynamic_map.models.map_events import MarkerOpEvent
 
 @jrpc_service.request("markers.add")
 async def markers_add(
-    id: str, name: str, latLng: list[float], channel: str,
-    icon: str = "default", heading: float | None = None, speed: float | None = None,
+    id: str,
+    name: str,
+    latLng: list[float],
+    channel: str,
+    icon: str = "default",
+    heading: float | None = None,
+    speed: float | None = None,
     cid: str = "*",
 ) -> dict:
     ll = LatLng.from_list(latLng)
@@ -25,14 +30,23 @@ async def markers_add(
         op["speed"] = speed
     marker_store.store(op, channel=channel, item=marker)
     await pub_sub_hub.send_all_on_topic_async(marker_ops_topic(channel, cid), op)
-    EventBroadcaster.broadcast(MarkerOpEvent(op="add", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
+    EventBroadcaster.broadcast(
+        MarkerOpEvent(
+            op="add", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid
+        )
+    )
     return {"ok": True}
 
 
 @jrpc_service.request("markers.update")
 async def markers_update(
-    id: str, name: str, latLng: list[float], channel: str,
-    icon: str = "default", heading: float | None = None, speed: float | None = None,
+    id: str,
+    name: str,
+    latLng: list[float],
+    channel: str,
+    icon: str = "default",
+    heading: float | None = None,
+    speed: float | None = None,
     cid: str = "*",
 ) -> dict:
     ll = LatLng.from_list(latLng)
@@ -44,7 +58,11 @@ async def markers_update(
         op["speed"] = speed
     marker_store.store(op, channel=channel, item=marker)
     await pub_sub_hub.send_all_on_topic_async(marker_ops_topic(channel, cid), op)
-    EventBroadcaster.broadcast(MarkerOpEvent(op="update", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid))
+    EventBroadcaster.broadcast(
+        MarkerOpEvent(
+            op="update", id=id, name=name, latLng=ll, icon=icon, heading=heading, speed=speed, channel=channel, cid=cid
+        )
+    )
     return {"ok": True}
 
 

@@ -12,35 +12,85 @@ from pyview_map.components.dynamic_map.models.map_events import PolylineOpEvent
 
 @jrpc_service.request("polylines.add")
 async def polylines_add(
-    id: str, name: str, path: list[list[float]], channel: str,
-    color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
-    dashArray: str | None = None, cid: str = "*",
+    id: str,
+    name: str,
+    path: list[list[float]],
+    channel: str,
+    color: str = "#3388ff",
+    weight: int = 3,
+    opacity: float = 1.0,
+    dashArray: str | None = None,
+    cid: str = "*",
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    polyline = DPolyline(id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
+    polyline = DPolyline(
+        id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray
+    )
     op: dict = {"op": "add", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
     if dashArray is not None:
         op["dashArray"] = dashArray
     polyline_store.store(op, channel=channel, item=polyline)
     await pub_sub_hub.send_all_on_topic_async(polyline_ops_topic(channel, cid), op)
-    EventBroadcaster.broadcast(PolylineOpEvent(op="add", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
+    EventBroadcaster.broadcast(
+        PolylineOpEvent(
+            op="add",
+            id=id,
+            name=name,
+            path=ll_path,
+            color=color,
+            weight=weight,
+            opacity=opacity,
+            dashArray=dashArray,
+            channel=channel,
+            cid=cid,
+        )
+    )
     return {"ok": True}
 
 
 @jrpc_service.request("polylines.update")
 async def polylines_update(
-    id: str, name: str, path: list[list[float]], channel: str,
-    color: str = "#3388ff", weight: int = 3, opacity: float = 1.0,
-    dashArray: str | None = None, cid: str = "*",
+    id: str,
+    name: str,
+    path: list[list[float]],
+    channel: str,
+    color: str = "#3388ff",
+    weight: int = 3,
+    opacity: float = 1.0,
+    dashArray: str | None = None,
+    cid: str = "*",
 ) -> dict:
     ll_path = [LatLng.from_list(p) for p in path]
-    polyline = DPolyline(id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray)
-    op: dict = {"op": "update", "id": id, "name": name, "path": path, "color": color, "weight": weight, "opacity": opacity}
+    polyline = DPolyline(
+        id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dash_array=dashArray
+    )
+    op: dict = {
+        "op": "update",
+        "id": id,
+        "name": name,
+        "path": path,
+        "color": color,
+        "weight": weight,
+        "opacity": opacity,
+    }
     if dashArray is not None:
         op["dashArray"] = dashArray
     polyline_store.store(op, channel=channel, item=polyline)
     await pub_sub_hub.send_all_on_topic_async(polyline_ops_topic(channel, cid), op)
-    EventBroadcaster.broadcast(PolylineOpEvent(op="update", id=id, name=name, path=ll_path, color=color, weight=weight, opacity=opacity, dashArray=dashArray, channel=channel, cid=cid))
+    EventBroadcaster.broadcast(
+        PolylineOpEvent(
+            op="update",
+            id=id,
+            name=name,
+            path=ll_path,
+            color=color,
+            weight=weight,
+            opacity=opacity,
+            dashArray=dashArray,
+            channel=channel,
+            cid=cid,
+        )
+    )
     return {"ok": True}
 
 

@@ -48,12 +48,7 @@ class ListItemClickEvent:
     cid: str | None = None
 
     def to_dict(self) -> dict:
-        d: dict = {
-            "type": "list-item-event",
-            "event": self.event,
-            "id": self.id,
-            "label": self.label,
-        }
+        d: dict = {"type": "list-item-event", "event": self.event, "id": self.id, "label": self.label}
         if self.channel is not None:
             d["channel"] = self.channel
         if self.cid is not None:
@@ -94,14 +89,12 @@ def parse_list_event(params: dict) -> ListBroadcastEvent:
                 label=params.get("label", ""),
                 subtitle=params.get("subtitle", ""),
                 at=params.get("at", -1),
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "list-item-event":
             return ListItemClickEvent(
-                event=params["event"],
-                id=params["id"],
-                label=params["label"],
-                channel=channel, cid=cid,
+                event=params["event"], id=params["id"], label=params["label"], channel=channel, cid=cid
             )
         case "list-ready":
             return ListReadyEvent(channel=channel, cid=cid)

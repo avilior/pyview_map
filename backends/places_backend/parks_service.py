@@ -42,14 +42,12 @@ async def _send(rpc: ClientRPC, method: str, params: dict | None = None) -> None
 
 
 async def _reverse_connection(
-    callback_url: str,
-    list_channel: str,
-    list_cid: str,
-    map_channel: str,
-    map_cid: str,
+    callback_url: str, list_channel: str, list_cid: str, map_channel: str, map_cid: str
 ) -> None:
     """Connect back to the BFF: wait for components, populate list, react to events."""
-    LOG.info("reverse connection → %s (list=%s/%s, map=%s/%s)", callback_url, list_channel, list_cid, map_channel, map_cid)
+    LOG.info(
+        "reverse connection → %s (list=%s/%s, map=%s/%s)", callback_url, list_channel, list_cid, map_channel, map_cid
+    )
     try:
         async with ClientRPC(base_url=callback_url, auth_token=BFF_TOKEN) as rpc:
             req = JSONRPCRequest(method="bff.subscribe")
@@ -60,40 +58,54 @@ async def _reverse_connection(
                     case JSONRPCNotification() if msg.method == LIST_NOTIFICATION_METHOD:
                         evt = parse_list_event(msg.params)
                         match evt:
-                            case ListReadyEvent() if evt.channel == list_channel and evt.cid == list_cid and not populated:
+                            case ListReadyEvent() if (
+                                evt.channel == list_channel and evt.cid == list_cid and not populated
+                            ):
                                 populated = True
                                 LOG.info("list ready — populating %d parks", len(national_parks))
                                 for np in national_parks.values():
-                                    await _send(rpc, "list.add", {
-                                        "id": np.name,
-                                        "label": np.name,
-                                        "subtitle": np.description,
-                                        "channel": list_channel,
-                                        "cid": list_cid,
-                                        "data": {"icon": np.icon},
-                                    })
+                                    await _send(
+                                        rpc,
+                                        "list.add",
+                                        {
+                                            "id": np.name,
+                                            "label": np.name,
+                                            "subtitle": np.description,
+                                            "channel": list_channel,
+                                            "cid": list_cid,
+                                            "data": {"icon": np.icon},
+                                        },
+                                    )
                             case ListItemOpEvent(op="add") if evt.channel == list_channel:
                                 park = national_parks.get(evt.id)
                                 if park:
                                     LOG.info("list add → %s, adding marker", evt.id)
-                                    await _send(rpc, "markers.add", {
-                                        "id": park.name,
-                                        "name": park.name,
-                                        "latLng": park.lat_lng.to_list(),
-                                        "icon": park.icon,
-                                        "channel": map_channel,
-                                        "cid": map_cid,
-                                    })
+                                    await _send(
+                                        rpc,
+                                        "markers.add",
+                                        {
+                                            "id": park.name,
+                                            "name": park.name,
+                                            "latLng": park.lat_lng.to_list(),
+                                            "icon": park.icon,
+                                            "channel": map_channel,
+                                            "cid": map_cid,
+                                        },
+                                    )
                             case ListItemClickEvent() if evt.channel == list_channel and evt.cid == list_cid:
                                 park = national_parks.get(evt.id)
                                 if park:
                                     LOG.info("click → %s, sending setView", evt.id)
-                                    await _send(rpc, "map.setView", {
-                                        "latLng": park.lat_lng.to_list(),
-                                        "zoom": 12,
-                                        "channel": map_channel,
-                                        "cid": map_cid,
-                                    })
+                                    await _send(
+                                        rpc,
+                                        "map.setView",
+                                        {
+                                            "latLng": park.lat_lng.to_list(),
+                                            "zoom": 12,
+                                            "channel": map_channel,
+                                            "cid": map_cid,
+                                        },
+                                    )
 
                     case JSONRPCResponse():
                         LOG.info("reverse connection: event stream ended")
@@ -107,16 +119,12 @@ async def _reverse_connection(
 
 @jrpc_service.request("parks.subscribe")
 async def parks_subscribe(
-    info: RequestInfo,
-    callback_url: str,
-    list_channel: str,
-    list_cid: str,
-    map_channel: str,
-    map_cid: str,
+    info: RequestInfo, callback_url: str, list_channel: str, list_cid: str, map_channel: str, map_cid: str
 ) -> asyncio.Queue:
     """Establish BE→BFF SSE channel and spawn reverse connection."""
-    LOG.info("BFF subscribed: list=%s/%s, map=%s/%s, callback=%s",
-             list_channel, list_cid, map_channel, map_cid, callback_url)
+    LOG.info(
+        "BFF subscribed: list=%s/%s, map=%s/%s, callback=%s", list_channel, list_cid, map_channel, map_cid, callback_url
+    )
     queue: asyncio.Queue = asyncio.Queue(maxsize=256)
     asyncio.create_task(_reverse_connection(callback_url, list_channel, list_cid, map_channel, map_cid))
     return queue
@@ -125,12 +133,7 @@ async def parks_subscribe(
 @jrpc_service.request("parks.list")
 def parks_list() -> list[dict]:
     return [
-        {
-            "name": np.name,
-            "lat_lng": np.lat_lng.to_list(),
-            "description": np.description,
-            "icon": np.icon,
-        }
+        {"name": np.name, "lat_lng": np.lat_lng.to_list(), "description": np.description, "icon": np.icon}
         for np in national_parks.values()
     ]
 

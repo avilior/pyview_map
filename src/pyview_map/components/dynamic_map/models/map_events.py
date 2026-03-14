@@ -192,20 +192,24 @@ def parse_map_event(params: dict) -> MapBroadcastEvent:
         case "marker-op":
             raw_ll = params.get("latLng")
             return MarkerOpEvent(
-                op=params["op"], id=params["id"],
+                op=params["op"],
+                id=params["id"],
                 name=params.get("name"),
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
                 icon=params.get("icon"),
                 heading=params.get("heading"),
                 speed=params.get("speed"),
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "marker-event":
             return MarkerEvent(
-                event=params["event"], id=params["id"],
+                event=params["event"],
+                id=params["id"],
                 name=params["name"],
                 latLng=LatLng.from_list(params["latLng"]),
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "map-event":
             raw_ll = params.get("latLng")
@@ -216,26 +220,31 @@ def parse_map_event(params: dict) -> MapBroadcastEvent:
                 zoom=params["zoom"],
                 latLng=LatLng.from_list(raw_ll) if raw_ll else None,
                 bounds=(LatLng.from_list(raw_bounds[0]), LatLng.from_list(raw_bounds[1])) if raw_bounds else None,
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "polyline-op":
             raw_path = params.get("path")
             return PolylineOpEvent(
-                op=params["op"], id=params["id"],
+                op=params["op"],
+                id=params["id"],
                 name=params.get("name"),
                 path=[LatLng.from_list(p) for p in raw_path] if raw_path else None,
                 color=params.get("color"),
                 weight=params.get("weight"),
                 opacity=params.get("opacity"),
                 dashArray=params.get("dashArray"),
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "polyline-event":
             return PolylineEvent(
-                event=params["event"], id=params["id"],
+                event=params["event"],
+                id=params["id"],
                 name=params["name"],
                 latLng=LatLng.from_list(params["latLng"]),
-                channel=channel, cid=cid,
+                channel=channel,
+                cid=cid,
             )
         case "map-ready":
             return MapReadyEvent(channel=channel, cid=cid)
@@ -246,6 +255,7 @@ def parse_map_event(params: dict) -> MapBroadcastEvent:
 # ---------------------------------------------------------------------------
 # Map commands — sent from external clients to control the browser map
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class SetViewCmd:
@@ -346,4 +356,16 @@ class UnfollowMarkerCmd:
         return f"{prefix}unfollowMarker", {}
 
 
-MapCommand = SetViewCmd | PanToCmd | FlyToCmd | FitBoundsCmd | FlyToBoundsCmd | SetZoomCmd | ResetViewCmd | HighlightMarkerCmd | HighlightPolylineCmd | FollowMarkerCmd | UnfollowMarkerCmd
+MapCommand = (
+    SetViewCmd
+    | PanToCmd
+    | FlyToCmd
+    | FitBoundsCmd
+    | FlyToBoundsCmd
+    | SetZoomCmd
+    | ResetViewCmd
+    | HighlightMarkerCmd
+    | HighlightPolylineCmd
+    | FollowMarkerCmd
+    | UnfollowMarkerCmd
+)

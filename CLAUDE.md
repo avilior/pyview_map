@@ -104,6 +104,10 @@ backends/
 - **Ibis template limits** — the ibis template engine does not support subscript syntax (`obj[0]`); use properties or filters instead.
 - **t-string templates (Python 3.14)** — `DynamicMapComponent`, `DynamicListComponent`, and their parent LiveViews use t-string templates with `TemplateView` mixin + `live_component()` / `stream_for()` helpers from PyView. Ibis `.html` templates are still used for the `/map` parks view.
 
+## Ruff & Python 3.14
+
+Ruff 0.15+ supports t-string syntax (PEP 750) — no file exclusions needed.
+
 ## Streaming live updates with `Stream`
 
 Use `pyview.stream.Stream` for collections that change over time.

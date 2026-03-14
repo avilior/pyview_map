@@ -26,7 +26,6 @@ class FlightsViewContext:
 
 
 class FlightsView(TemplateView, LiveView[FlightsViewContext]):
-
     base_channel: str = "flights"
 
     async def mount(self, socket: LiveViewSocket[FlightsViewContext], session: Session):
@@ -84,7 +83,11 @@ class FlightsView(TemplateView, LiveView[FlightsViewContext]):
         last_event = assigns.last_event
         map_comp = self._map.render()
 
-        event_line = t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>' if last_event else t'<div class="text-xs text-gray-400">No events yet</div>'
+        event_line = (
+            t'<div class="text-xs font-mono text-gray-600 truncate">{last_event}</div>'
+            if last_event
+            else t'<div class="text-xs text-gray-400">No events yet</div>'
+        )
 
         return t"""<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">

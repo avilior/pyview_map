@@ -16,7 +16,7 @@ app.mount(
         ]
     ),
     name="static",
-    )
+)
 
 # Define the header piece.
 

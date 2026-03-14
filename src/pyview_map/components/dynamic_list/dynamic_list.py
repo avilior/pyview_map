@@ -27,6 +27,7 @@ def default_item_renderer(item: DListItem) -> Any:
 # DynamicListComponent — renders a scrollable list with stream items
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DynamicListComponentContext:
     items: Stream[DListItem]
@@ -70,9 +71,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
         initial_items = assigns.get("initial_items", [])
         item_renderer = assigns.get("item_renderer", default_item_renderer)
         socket.context = DynamicListComponentContext(
-            items=Stream(initial_items, name=f"{channel}-list-items"),
-            channel=channel,
-            _item_renderer=item_renderer,
+            items=Stream(initial_items, name=f"{channel}-list-items"), channel=channel, _item_renderer=item_renderer
         )
 
     async def update(self, socket: ComponentSocket[DynamicListComponentContext], assigns: dict[str, Any]) -> None:
@@ -85,7 +84,9 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
         stream_name = f"{ctx.channel}-list-items"
         _apply_list_ops(ctx.items, assigns.get("list_ops", []), stream_name=stream_name)
 
-    async def handle_event(self, event: str, payload: dict, socket: ComponentSocket[DynamicListComponentContext]) -> None:
+    async def handle_event(
+        self, event: str, payload: dict, socket: ComponentSocket[DynamicListComponentContext]
+    ) -> None:
         pass  # click events bubble to parent LiveView; ListDriver handles broadcast with channel/cid
 
     def template(self, assigns: DynamicListComponentContext, meta: ComponentMeta):
@@ -93,8 +94,11 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
         items_id = f"{channel}-list-items"
         renderer = assigns._item_renderer
 
-        items_html = stream_for(assigns.items, lambda dom_id, item:
-            t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-value-id="{item.id}" phx-value-label="{item.label}">{renderer(item)}</div>'
+        items_html = stream_for(
+            assigns.items,
+            lambda dom_id, item: (
+                t'<div id="{dom_id}" class="list-item px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 transition-colors" phx-click="item-click" phx-value-id="{item.id}" phx-value-label="{item.label}">{renderer(item)}</div>'
+            ),
         )
 
         return t"""<div data-channel="{channel}">
@@ -112,6 +116,7 @@ class DynamicListComponent(LiveComponent[DynamicListComponentContext]):
 # Parent LiveView — PubSub-driven updates, embeds list component
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DynamicListPageContext:
     pass
@@ -127,6 +132,7 @@ class DynamicListLiveView(TemplateView, LiveView[DynamicListPageContext]):
 
     async def mount(self, socket: LiveViewSocket[DynamicListPageContext], session):
         from .list_driver import ListDriver
+
         self._list = ListDriver(channel="dlist")
         socket.context = DynamicListPageContext()
         if socket.connected:
