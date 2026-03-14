@@ -93,7 +93,7 @@ def init_airport_markers():
 @dataclass
 class Plane:
     id: str
-    marker: DMarker | None = None
+    marker: DMarker
 
 
 class Flight:
@@ -103,10 +103,10 @@ class Flight:
         plane: Plane,
         origin: Airport,
         destination: Airport,
-        departure_time: datetime | None = None,
-        arrival_time: datetime | None = None,
-        planned_route: list[Tuple[datetime, LatLng]] | None = None,
-        last_position: LatLng | None = None,
+        departure_time: datetime,
+        arrival_time: datetime,
+        planned_route: list[Tuple[datetime, LatLng]],
+        last_position: LatLng,
     ) -> None:
 
         self.id = id
@@ -114,10 +114,10 @@ class Flight:
         self.origin: Airport = origin
         self.destination: Airport = destination
 
-        self.departure_time: datetime | None = departure_time
-        self.arrival_time: datetime | None = arrival_time
-        self.planned_route: list[Tuple[datetime, LatLng]] | None = planned_route
-        self.last_position: LatLng | None = last_position
+        self.departure_time: datetime = departure_time
+        self.arrival_time: datetime = arrival_time
+        self.planned_route: list[Tuple[datetime, LatLng]] = planned_route
+        self.last_position: LatLng = last_position
         self.flight_completed: bool = False
 
     @classmethod
@@ -192,6 +192,7 @@ class Flight:
         while True:
             await asyncio.sleep(1)
 
+            assert self.plane.marker.speed is not None
             current_latlng = great_circle_position_at_time(
                 from_latlng=self.origin.latlng,
                 to_latlng=self.destination.latlng,
@@ -229,6 +230,7 @@ async def _reverse_connection(callback_url: str, map_channel: str, map_cid: str)
 
             # Add airport markers
             for ap in airports:
+                assert ap.marker is not None
                 params = ap.marker.to_dict()
                 params["channel"] = map_channel
                 params["cid"] = map_cid

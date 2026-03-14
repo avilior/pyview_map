@@ -55,7 +55,7 @@ async def _reverse_connection(
 
             async for msg in rpc.send_request(req):
                 match msg:
-                    case JSONRPCNotification() if msg.method == LIST_NOTIFICATION_METHOD:
+                    case JSONRPCNotification() if msg.method == LIST_NOTIFICATION_METHOD and isinstance(msg.params, dict):
                         evt = parse_list_event(msg.params)
                         match evt:
                             case ListReadyEvent() if (
