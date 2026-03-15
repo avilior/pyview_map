@@ -107,7 +107,7 @@ wheels = [
 [[package]]
 name = "http-stream-client"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient#fc972119c5d2eaf264911e435a7f39f52a8e28f3" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient#f46e65180c6326942bb05cc3d024d6998491350b" }
 dependencies = [
     { name = "httpx" },
     { name = "jrpc-common" },
@@ -117,7 +117,7 @@ dependencies = [
 [[package]]
 name = "http-stream-transport"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg#fc972119c5d2eaf264911e435a7f39f52a8e28f3" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg#f46e65180c6326942bb05cc3d024d6998491350b" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -192,7 +192,7 @@ wheels = [
 [[package]]
 name = "jrpc-common"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common#fc972119c5d2eaf264911e435a7f39f52a8e28f3" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common#f46e65180c6326942bb05cc3d024d6998491350b" }
 dependencies = [
     { name = "pydantic" },
 ]
