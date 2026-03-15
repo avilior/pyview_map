@@ -4,5 +4,3 @@ __pycache__
 **/__pycache__
 *.pyc
 .git
-uv.lock
-**/uv.lock

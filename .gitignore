@@ -17,7 +17,6 @@ wheels/
 MANIFEST
 .env
 .venv/
-uv.lock
 venv/
 ENV/
 env/

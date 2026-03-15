@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy shared package and dependency files (mirror repo layout for path deps)
 COPY packages/dmap_models/ packages/dmap_models/
-COPY backends/places_backend/pyproject.toml backends/places_backend/
+COPY backends/places_backend/pyproject.toml backends/places_backend/uv.lock backends/places_backend/
 
 WORKDIR /app/backends/places_backend
 

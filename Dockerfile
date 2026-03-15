@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
 WORKDIR /app
 
 # Copy dependency files first for layer caching
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 COPY packages/dmap_models/ packages/dmap_models/
 
 # Install dependencies (without the project itself)
