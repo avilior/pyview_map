@@ -11,6 +11,7 @@ http-stream-transport = { git = "ssh://git@github.com/avilior/http_stream_prj", 
 http-stream-client = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/client" }
 jrpc-common = { git = "ssh://git@github.com/avilior/http_stream_prj", subdirectory = "packages/jrpc_common" }
 dmap-models = { workspace = true }
+bff-engine = { workspace = true }
 
 [tool.ruff]
 line-length = 120

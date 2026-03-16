@@ -7,13 +7,14 @@ A PyView LiveView demo app showing interactive Leaflet.js maps.
 ## Running
 
 ```bash
-uv run --package pyview-map pyview-map   # BFF on :8123
-just all                                 # Both BEs + BFF, opens browser
-just places                              # Parks BE + BFF
-just flights                             # Flights BE + BFF
+uv run --package flights-bff flights-bff   # Flights BFF on :8123
+uv run --package places-bff places-bff     # Places BFF on :8124
+just all                                   # Both BEs + both BFFs, opens browser
+just places                                # Parks BE + Places BFF
+just flights                               # Flights BE + Flights BFF
 ```
 
-Routes: `/flights` (flight simulation), `/places_demo` (places list + map)
+Routes: `/flights` (flight simulation on flights-bff:8123), `/places_demo` (places list + map on places-bff:8124)
 
 ### Release (GHCR)
 
@@ -24,7 +25,7 @@ just release-down        # Stop release services
 just release-logs        # Tail release logs
 ```
 
-Images are built for `linux/amd64` + `linux/arm64` and pushed to `ghcr.io/avilior/pyview-map-{bff,places-backend,flights-backend}` with `:latest` + `:` tags.
+Images are built for `linux/amd64` + `linux/arm64` and pushed to `ghcr.io/avilior/pyview-map-{flights-bff,places-bff,places-backend,flights-backend}` with `:latest` + `:<sha>` tags.
 
 Requires `GITHUB_USER` and `GITHUB_TOKEN` (PAT with `read:packages` + `write:packages`) in `.env`. See `.env.example`.
 
@@ -35,22 +36,31 @@ Deploy compose file: `docker-compose.release.yml` (pull-only, no build context).
 ```
 pyproject.toml               # workspace root (no app code)
 uv.lock                     # single unified lock
+packages/
+├── dmap_models/             # shared wire-protocol models
+└── bff_engine/              # shared BFF engine — components, drivers, API/app factories
+    ├── pyproject.toml
+    └── src/bff_engine/
+        ├── bff_app.py       # create_app() factory — PyView app, StaticFiles, CSS
+        ├── bff_api.py       # create_api() factory — FastAPI, MCP router, bff.subscribe
+        ├── shared/          # cid.py, event_broadcaster.py, item_store.py, topics.py
+        ├── dynamic_map/     # Map LiveComponent + MapDriver + models + sources + api/
+        └── dynamic_list/    # List LiveComponent + ListDriver + models + sources + api/
 services/
-├── bff/                     # pyview-map BFF
+├── flights_bff/             # Flights BFF (port 8123)
 │   ├── pyproject.toml
 │   ├── Dockerfile
-│   └── src/pyview_map/
-│       ├── __main__.py      # Entry point — route registration + uvicorn
-│       ├── app.py           # PyView app, StaticFiles, root template
-│       ├── api.py           # FastAPI sub-app, MCP router, bff.subscribe
-│       ├── openrpc.py       # OpenRPC spec generator + /docs, /openrpc.json
-│       ├── components/
-│       │   ├── shared/      # cid.py, latlng.py, event_broadcaster.py, item_store.py, topics.py
-│       │   ├── dynamic_map/ # Map LiveComponent + MapDriver + models + sources + api/
-│       │   └── dynamic_list/# List LiveComponent + ListDriver + models + sources + api/
-│       └── applications/
-│           ├── flights_demo/# FlightsView — MapDriver + flights BE
-│           └── places_demo/ # PlacesView — ListDriver + MapDriver + parks BE
+│   └── src/flights_bff/
+│       ├── __main__.py      # Entry point — creates app/api, registers /flights
+│       ├── settings.py      # FLIGHTS_BFF_* env vars
+│       └── flights_demo.py  # FlightsView — MapDriver + flights BE
+├── places_bff/              # Places BFF (port 8124)
+│   ├── pyproject.toml
+│   ├── Dockerfile
+│   └── src/places_bff/
+│       ├── __main__.py      # Entry point — creates app/api, registers /places_demo
+│       ├── settings.py      # PLACES_BFF_* env vars
+│       └── places_demo.py   # PlacesView — ListDriver + MapDriver + parks BE
 ├── places_backend/          # parks_service.py (port 8200)
 │   ├── pyproject.toml
 │   ├── Dockerfile
@@ -59,17 +69,20 @@ services/
     ├── pyproject.toml
     ├── Dockerfile
     └── src/flights_backend/
-packages/
-└── dmap_models/             # shared wire-protocol models
 ```
 
 ## Adding a new application
 
-1. Create `services/bff/src/pyview_map/applications/<name>/` with `__init__.py` and `<name>.py`.
-2. If static assets needed, add to `app.py`: `("pyview_map.applications.<name>", "static")`
-   — use the full dotted package name.
-3. If JS hook, add a `<script defer>` tag in `app.py`.
-4. Register in `__main__.py`: `app.add_live_view("/<path>", MyLiveView)`
+1. Create a new BFF service: `services/<name>_bff/` with `pyproject.toml` and `src/<name>_bff/`.
+2. Add `bff-engine` as a dependency in `pyproject.toml`.
+3. In `__main__.py`:
+   - Import the component API modules you need (e.g. `import bff_engine.dynamic_map.api.marker_api`)
+   - Call `create_app(static_packages=[...], extra_head_html=...)` with the component packages
+   - Call `create_api(title=..., description=...)` to create the FastAPI sub-app
+   - Register your live view and mount the API
+4. Create your view file importing drivers from `bff_engine.dynamic_map` / `bff_engine.dynamic_list`.
+5. Create a `settings.py` with your own env prefix.
+6. Add a `Dockerfile` following the pattern in existing BFFs.
 
 ## Key conventions
 
@@ -85,6 +98,9 @@ packages/
 `MapDriver` and `ListDriver` encapsulate all parent-side plumbing. 6 methods:
 
 ```python
+from bff_engine.dynamic_map import MapDriver
+from bff_engine.dynamic_list import ListDriver
+
 class MyPageView(TemplateView, LiveView[MyContext]):
     async def mount(self, socket, session):
         self._map = MapDriver("my-map")

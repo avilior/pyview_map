@@ -1,17 +1,26 @@
 services:
-  bff:
-    image: ghcr.io/avilior/pyview-map-bff:${IMAGE_TAG:-latest}
+  flights-bff:
+    image: ghcr.io/avilior/pyview-map-flights-bff:${IMAGE_TAG:-latest}
     ports:
-      - "${BFF_PORT:-8123}:80"
+      - "${FLIGHTS_BFF_PORT:-8123}:80"
     environment:
-      BFF_PLACES_BACKEND_URL: "http://places-backend/api"
-      BFF_FLIGHTS_BACKEND_URL: "http://flights-backend/api"
-      BFF_CALLBACK_URL: "http://bff/api"
-      BFF_AUTH_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
+      FLIGHTS_BFF_FLIGHTS_BACKEND_URL: "http://flights-backend/api"
+      FLIGHTS_BFF_CALLBACK_URL: "http://flights-bff/api"
+      FLIGHTS_BFF_AUTH_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
+    depends_on:
+      flights-backend:
+        condition: service_healthy
+
+  places-bff:
+    image: ghcr.io/avilior/pyview-map-places-bff:${IMAGE_TAG:-latest}
+    ports:
+      - "${PLACES_BFF_PORT:-8124}:80"
+    environment:
+      PLACES_BFF_PLACES_BACKEND_URL: "http://places-backend/api"
+      PLACES_BFF_CALLBACK_URL: "http://places-bff/api"
+      PLACES_BFF_AUTH_TOKEN: "${BFF_AUTH_TOKEN:-tok-acme-001}"
     depends_on:
       places-backend:
-        condition: service_healthy
-      flights-backend:
         condition: service_healthy
 
   places-backend:

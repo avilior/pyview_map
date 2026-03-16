@@ -2,17 +2,18 @@
 
 A demo app built with [PyView](https://github.com/ogrodnek/pyview) showing how to build interactive and real-time maps using [Leaflet.js](https://leafletjs.com/) and LiveView.
 
-Uses a **BFF/BE architecture**: the PyView server (BFF) hosts LiveView pages,
-while backend services push data via reverse JSON-RPC connections. See
+Uses a **BFF/BE architecture**: each app has its own PyView BFF that hosts LiveView pages,
+while backend services push data via reverse JSON-RPC connections. Shared components
+live in the `bff-engine` package. See
 [`docs/architecture_bff_be.md`](docs/architecture_bff_be.md) for the full design.
 
 ## Routes
 
-| Route | Description |
-|---|---|
-| `/flights` | Flight simulation — live aircraft tracking with polyline routes |
-| `/places_demo` | National parks list + map — click a park to fly there |
-| `/api/docs` | Interactive JSON-RPC API explorer |
+| Route | BFF | Port | Description |
+|---|---|---|---|
+| `/flights` | flights-bff | 8123 | Flight simulation — live aircraft tracking with polyline routes |
+| `/places_demo` | places-bff | 8124 | National parks list + map — click a park to fly there |
+| `/api/docs` | each BFF | — | Interactive JSON-RPC API explorer |
 
 ## Requirements
 
@@ -27,25 +28,35 @@ git clone https://github.com/avilior/pyview_map
 cd pyview_map
 
 just install    # uv sync --all-packages
-just run        # start the BFF server
+just all        # start both BEs + both BFFs, open browser
 ```
 
-The BFF starts at `http://localhost:8123`. To run with a backend:
+Or run individual apps:
 
 ```bash
-# Terminal 1 — BFF
-uv run --package pyview-map pyview-map
+just flights    # Flights BE + Flights BFF → opens /flights
+just places     # Parks BE + Places BFF → opens /places_demo
+```
 
-# Terminal 2 — Parks backend (for /places_demo)
-uv run --package places-backend places-backend
+Or run services individually:
 
-# Terminal 3 — Flights backend (for /flights)
+```bash
+# Terminal 1 — Flights BFF
+uv run --package flights-bff flights-bff
+
+# Terminal 2 — Flights backend
 uv run --package flights-backend flights-backend
+
+# Terminal 3 — Places BFF
+uv run --package places-bff places-bff
+
+# Terminal 4 — Parks backend
+uv run --package places-backend places-backend
 ```
 
 ## JSON-RPC API
 
-The BFF exposes a JSON-RPC 2.0 endpoint at `POST /api/mcp` (MCP transport).
+Each BFF exposes a JSON-RPC 2.0 endpoint at `POST /api/mcp` (MCP transport).
 External clients push marker/polyline/list operations and the LiveView streams
 them to all connected browsers in real time.
 
@@ -59,8 +70,8 @@ Each service auto-generates API docs from its registered method signatures:
 | `GET /api/openrpc.json` | Machine-readable [OpenRPC 1.3.2](https://open-rpc.org/) spec |
 | `rpc.discover` (via MCP) | Same spec, accessible to any MCP client |
 
-Browse to `http://localhost:8123/api/docs` to explore the BFF's 26 methods
-(markers, polylines, list, map commands). Each backend has its own docs at
+Browse to `http://localhost:8123/api/docs` (flights) or `http://localhost:8124/api/docs` (places)
+to explore the available methods. Each backend has its own docs at
 `:8200/api/docs` and `:8300/api/docs`.
 
 ### Authentication
@@ -88,19 +99,20 @@ See [`CLAUDE.md`](CLAUDE.md) for full parameter details, architecture docs, and 
 ## Project structure
 
 ```
+packages/
+├── dmap_models/             # Shared wire-protocol models
+└── bff_engine/              # Shared BFF engine — components, drivers, API/app factories
+    └── src/bff_engine/
+        ├── bff_app.py       # create_app() factory
+        ├── bff_api.py       # create_api() factory
+        ├── shared/          # Shared utilities (cid, event_broadcaster, item_store, topics)
+        ├── dynamic_map/     # Map LiveComponent + MapDriver + API
+        └── dynamic_list/    # List LiveComponent + ListDriver + API
 services/
-├── bff/                     # PyView BFF
-│   └── src/pyview_map/
-│       ├── __main__.py      # Entry point — registers routes and starts uvicorn
-│       ├── app.py           # PyView app, StaticFiles mount, root template
-│       ├── api.py           # FastAPI sub-app, MCP router, health endpoint
-│       ├── openrpc.py       # OpenRPC spec generator + docs/discovery endpoints
-│       ├── components/      # Reusable LiveComponents (dynamic_map, dynamic_list)
-│       └── applications/    # Front-end pages (flights_demo, places_demo)
+├── flights_bff/             # Flights BFF (port 8123)
+├── places_bff/              # Places BFF (port 8124)
 ├── places_backend/          # Parks BE — populates /places_demo list + map
 └── flights_backend/         # Flights BE — simulates flights for /flights
-packages/
-└── dmap_models/             # Shared wire-protocol models
 ```
 
 See [`CLAUDE.md`](CLAUDE.md) for the full project layout.

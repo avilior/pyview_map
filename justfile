@@ -1,6 +1,7 @@
 set dotenv-load
 
-bff_port := env("BFF_PORT", "8123")
+flights_bff_port := env("FLIGHTS_BFF_PORT", "8123")
+places_bff_port := env("PLACES_BFF_PORT", "8124")
 places_port := env("PLACES_PORT", "8200")
 flights_port := env("FLIGHTS_PORT", "8300")
 github_user := env("GITHUB_USER", "avilior")
@@ -20,13 +21,21 @@ default:
 install:
     uv sync --all-packages
 
-# Run the BFF (pyview-map server)
-bff:
-    uv run --package pyview-map pyview-map
+# Run the Flights BFF
+flights-bff:
+    uv run --package flights-bff flights-bff
 
-# Stop the BFF
-stop-bff:
-    pkill -f "pyview-map" 2>/dev/null || true
+# Stop the Flights BFF
+stop-flights-bff:
+    pkill -f "flights-bff" 2>/dev/null || true
+
+# Run the Places BFF
+places-bff:
+    uv run --package places-bff places-bff
+
+# Stop the Places BFF
+stop-places-bff:
+    pkill -f "places-bff" 2>/dev/null || true
 
 # Start the Parks Service BE
 parks-be:
@@ -44,44 +53,46 @@ flights-be:
 stop-flights-be:
     pkill -f "flights-backend" 2>/dev/null || true
 
-# Start Parks BE + BFF, open /places_demo
+# Start Parks BE + Places BFF, open /places_demo
 places: stop-all
     #!/usr/bin/env bash
     uv run --package places-backend places-backend &
-    uv run --package pyview-map pyview-map &
+    uv run --package places-bff places-bff &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.3; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.3; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/places_demo
+    open http://localhost:{{places_bff_port}}/places_demo
 
-# Start Flights BE + BFF, open /flights
+# Start Flights BE + Flights BFF, open /flights
 flights: stop-all
     #!/usr/bin/env bash
     uv run --package flights-backend flights-backend &
-    uv run --package pyview-map pyview-map &
+    uv run --package flights-bff flights-bff &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.3; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.3; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/flights
+    open http://localhost:{{flights_bff_port}}/flights
 
-# Start both BEs + BFF, open both demos
+# Start both BEs + both BFFs, open both demos
 all: stop-all
     #!/usr/bin/env bash
     uv run --package places-backend places-backend &
     uv run --package flights-backend flights-backend &
-    uv run --package pyview-map pyview-map &
+    uv run --package flights-bff flights-bff &
+    uv run --package places-bff places-bff &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.3; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.3; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/places_demo
-    open http://localhost:{{bff_port}}/flights
+    open http://localhost:{{flights_bff_port}}/flights
+    open http://localhost:{{places_bff_port}}/places_demo
 
 # Stop everything (local)
-stop-all: stop-parks-be stop-flights-be stop-bff
+stop-all: stop-parks-be stop-flights-be stop-flights-bff stop-places-bff
 
 # ---------------------------------------------------------------------------
 # Docker (containerized)
@@ -98,10 +109,11 @@ docker-up:
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/places_demo
-    open http://localhost:{{bff_port}}/flights
+    open http://localhost:{{flights_bff_port}}/flights
+    open http://localhost:{{places_bff_port}}/places_demo
 
 # Stop all Docker services
 docker-down:
@@ -117,22 +129,22 @@ docker-restart: docker-down docker-build docker-up
 # Start only places in Docker
 docker-places:
     #!/usr/bin/env bash
-    docker compose up -d places-backend bff
+    docker compose up -d places-backend places-bff
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/places_demo
+    open http://localhost:{{places_bff_port}}/places_demo
 
 # Start only flights in Docker
 docker-flights:
     #!/usr/bin/env bash
-    docker compose up -d flights-backend bff
+    docker compose up -d flights-backend flights-bff
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/flights
+    open http://localhost:{{flights_bff_port}}/flights
 
 # ---------------------------------------------------------------------------
 # Release (build multi-arch images → push to GHCR → deploy from registry)
@@ -148,7 +160,8 @@ release-build: release-login
     set -euo pipefail
     echo "Building and pushing images for {{platforms}} (commit {{git_sha}})..."
     for svc in \
-        "bff|.|services/bff/Dockerfile" \
+        "flights-bff|.|services/flights_bff/Dockerfile" \
+        "places-bff|.|services/places_bff/Dockerfile" \
         "places-backend|.|services/places_backend/Dockerfile" \
         "flights-backend|.|services/flights_backend/Dockerfile"; do
         IFS='|' read -r name ctx dockerfile <<< "$svc"
@@ -167,7 +180,8 @@ release-build: release-login
     done
     echo ""
     echo "All images pushed:"
-    echo "  {{registry}}/pyview-map-bff:{{git_sha}}"
+    echo "  {{registry}}/pyview-map-flights-bff:{{git_sha}}"
+    echo "  {{registry}}/pyview-map-places-bff:{{git_sha}}"
     echo "  {{registry}}/pyview-map-places-backend:{{git_sha}}"
     echo "  {{registry}}/pyview-map-flights-backend:{{git_sha}}"
 
@@ -179,10 +193,11 @@ release-up:
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
-    until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
     echo "Ready."
-    open http://localhost:{{bff_port}}/places_demo
-    open http://localhost:{{bff_port}}/flights
+    open http://localhost:{{flights_bff_port}}/flights
+    open http://localhost:{{places_bff_port}}/places_demo
 
 # Stop release services
 release-down:
@@ -195,7 +210,7 @@ release-logs:
 # Show current release images in GHCR
 release-list:
     #!/usr/bin/env bash
-    for pkg in pyview-map-bff pyview-map-places-backend pyview-map-flights-backend; do
+    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend; do
         echo "==> ${pkg}"
         docker image ls "{{registry}}/${pkg}" 2>/dev/null || echo "  (not pulled locally)"
         echo ""

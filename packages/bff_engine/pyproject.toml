@@ -1,0 +1,21 @@
+[project]
+name = "bff-engine"
+version = "0.1.0"
+description = "Shared BFF engine — map, list, drivers, API, and app factories"
+requires-python = ">=3.14"
+dependencies = [
+    "pyview-web>=v0.9.0a4",
+    "fastapi>=0.115",
+    "http-stream-transport",
+    "http-stream-client",
+    "jrpc-common",
+    "dmap-models",
+    "markupsafe",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bff_engine"]

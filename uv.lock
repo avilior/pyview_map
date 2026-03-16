@@ -4,10 +4,12 @@ requires-python = ">=3.14"
 
 [manifest]
 members = [
+    "bff-engine",
     "dmap-models",
     "flights-backend",
+    "flights-bff",
     "places-backend",
-    "pyview-map",
+    "places-bff",
     "pyview-map-workspace",
 ]
 
@@ -51,6 +53,31 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/07/12/3e4389e5920b4c1763390c6d371162f3784f86f85cd6d6c1bfe68eef14e2/apscheduler-3.11.2.tar.gz", hash = "sha256:2a9966b052ec805f020c8c4c3ae6e6a06e24b1bf19f2e11d91d8cca0473eef41", size = 108683, upload-time = "2025-12-22T00:39:34.884Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/64/2e54428beba8d9992aa478bb8f6de9e4ecaa5f8f513bcfd567ed7fb0262d/apscheduler-3.11.2-py3-none-any.whl", hash = "sha256:ce005177f741409db4e4dd40a7431b76feb856b9dd69d57e0da49d6715bfd26d", size = 64439, upload-time = "2025-12-22T00:39:33.303Z" },
+]
+
+[[package]]
+name = "bff-engine"
+version = "0.1.0"
+source = { editable = "packages/bff_engine" }
+dependencies = [
+    { name = "dmap-models" },
+    { name = "fastapi" },
+    { name = "http-stream-client" },
+    { name = "http-stream-transport" },
+    { name = "jrpc-common" },
+    { name = "markupsafe" },
+    { name = "pyview-web" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dmap-models", editable = "packages/dmap_models" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "http-stream-client", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient" },
+    { name = "http-stream-transport", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg" },
+    { name = "jrpc-common", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common" },
+    { name = "markupsafe" },
+    { name = "pyview-web", specifier = ">=0.9.0a4" },
 ]
 
 [[package]]
@@ -130,6 +157,25 @@ requires-dist = [
 ]
 
 [[package]]
+name = "flights-bff"
+version = "0.1.0"
+source = { editable = "services/flights_bff" }
+dependencies = [
+    { name = "bff-engine" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bff-engine", editable = "packages/bff_engine" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "uvicorn", specifier = ">=0.41.0" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -141,7 +187,7 @@ wheels = [
 [[package]]
 name = "http-stream-client"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient#f46e65180c6326942bb05cc3d024d6998491350b" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient#63d3bd54685366d06fdf9fb115d97fd60ea8e5f8" }
 dependencies = [
     { name = "httpx" },
     { name = "jrpc-common" },
@@ -151,7 +197,7 @@ dependencies = [
 [[package]]
 name = "http-stream-transport"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg#f46e65180c6326942bb05cc3d024d6998491350b" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg#63d3bd54685366d06fdf9fb115d97fd60ea8e5f8" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -226,7 +272,7 @@ wheels = [
 [[package]]
 name = "jrpc-common"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common#f46e65180c6326942bb05cc3d024d6998491350b" }
+source = { git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common#63d3bd54685366d06fdf9fb115d97fd60ea8e5f8" }
 dependencies = [
     { name = "pydantic" },
 ]
@@ -291,6 +337,25 @@ requires-dist = [
     { name = "http-stream-client", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient" },
     { name = "http-stream-transport", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg" },
     { name = "jrpc-common", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "uvicorn", specifier = ">=0.41.0" },
+]
+
+[[package]]
+name = "places-bff"
+version = "0.1.0"
+source = { editable = "services/places_bff" }
+dependencies = [
+    { name = "bff-engine" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bff-engine", editable = "packages/bff_engine" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "uvicorn", specifier = ">=0.41.0" },
 ]
@@ -370,35 +435,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
-]
-
-[[package]]
-name = "pyview-map"
-version = "0.1.0"
-source = { editable = "services/bff" }
-dependencies = [
-    { name = "dmap-models" },
-    { name = "fastapi" },
-    { name = "http-stream-client" },
-    { name = "http-stream-transport" },
-    { name = "httpx" },
-    { name = "jrpc-common" },
-    { name = "pydantic-settings" },
-    { name = "pyview-web" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dmap-models", editable = "packages/dmap_models" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "http-stream-client", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fclient" },
-    { name = "http-stream-transport", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fserver_pkg" },
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "jrpc-common", git = "ssh://git@github.com/avilior/http_stream_prj?subdirectory=packages%2Fjrpc_common" },
-    { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "pyview-web", specifier = ">=0.9.0a4" },
-    { name = "uvicorn", specifier = ">=0.41.0" },
 ]
 
 [[package]]
