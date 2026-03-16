@@ -4,24 +4,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
 
 WORKDIR /app
 
-# Copy shared package and dependency files (mirror repo layout for path deps)
-COPY packages/dmap_models/ packages/dmap_models/
-COPY backends/places_backend/pyproject.toml backends/places_backend/uv.lock backends/places_backend/
+# Copy workspace root + lock
+COPY pyproject.toml uv.lock ./
 
-WORKDIR /app/backends/places_backend
+# Copy shared package
+COPY packages/dmap_models/ packages/dmap_models/
+
+# Copy service dependency manifest
+COPY services/bff/pyproject.toml services/bff/
 
 # Install dependencies (without the project itself)
 RUN --mount=type=ssh mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
-    uv sync --no-install-project
+    uv sync --package pyview-map --no-install-project
 
 # Copy source code
-COPY backends/places_backend/src/ src/
+COPY services/bff/src/ services/bff/src/
 
 # Install the project
-RUN uv sync
+RUN uv sync --package pyview-map
 
 EXPOSE 80
 
-ENV PLACES_PORT=80
+ENV BFF_PORT=80
 
-CMD ["uv", "run", "places-backend"]
+CMD ["uv", "run", "--package", "pyview-map", "pyview-map"]

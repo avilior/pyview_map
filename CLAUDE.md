@@ -7,10 +7,10 @@ A PyView LiveView demo app showing interactive Leaflet.js maps.
 ## Running
 
 ```bash
-uv run pyview-map        # BFF on :8123
-just all                 # Both BEs + BFF, opens browser
-just places              # Parks BE + BFF
-just flights             # Flights BE + BFF
+uv run --package pyview-map pyview-map   # BFF on :8123
+just all                                 # Both BEs + BFF, opens browser
+just places                              # Parks BE + BFF
+just flights                             # Flights BE + BFF
 ```
 
 Routes: `/flights` (flight simulation), `/places_demo` (places list + map)
@@ -33,26 +33,39 @@ Deploy compose file: `docker-compose.release.yml` (pull-only, no build context).
 ## Project layout
 
 ```
-src/pyview_map/
-├── __main__.py          # Entry point — route registration + uvicorn
-├── app.py               # PyView app, StaticFiles, root template
-├── api.py               # FastAPI sub-app, MCP router, bff.subscribe
-├── openrpc.py           # OpenRPC spec generator + /docs, /openrpc.json
-├── components/
-│   ├── shared/          # cid.py, latlng.py, event_broadcaster.py, item_store.py, topics.py
-│   ├── dynamic_map/     # Map LiveComponent + MapDriver + models + sources + api/
-│   └── dynamic_list/    # List LiveComponent + ListDriver + models + sources + api/
-├── applications/
-│   ├── flights_demo/    # FlightsView — MapDriver + flights BE
-│   └── places_demo/     # PlacesView — ListDriver + MapDriver + parks BE
-backends/
-├── places_backend/      # parks_service.py (port 8200)
-└── flights_backend/     # flights_service.py (port 8300)
+pyproject.toml               # workspace root (no app code)
+uv.lock                     # single unified lock
+services/
+├── bff/                     # pyview-map BFF
+│   ├── pyproject.toml
+│   ├── Dockerfile
+│   └── src/pyview_map/
+│       ├── __main__.py      # Entry point — route registration + uvicorn
+│       ├── app.py           # PyView app, StaticFiles, root template
+│       ├── api.py           # FastAPI sub-app, MCP router, bff.subscribe
+│       ├── openrpc.py       # OpenRPC spec generator + /docs, /openrpc.json
+│       ├── components/
+│       │   ├── shared/      # cid.py, latlng.py, event_broadcaster.py, item_store.py, topics.py
+│       │   ├── dynamic_map/ # Map LiveComponent + MapDriver + models + sources + api/
+│       │   └── dynamic_list/# List LiveComponent + ListDriver + models + sources + api/
+│       └── applications/
+│           ├── flights_demo/# FlightsView — MapDriver + flights BE
+│           └── places_demo/ # PlacesView — ListDriver + MapDriver + parks BE
+├── places_backend/          # parks_service.py (port 8200)
+│   ├── pyproject.toml
+│   ├── Dockerfile
+│   └── src/places_backend/
+└── flights_backend/         # flights_service.py (port 8300)
+    ├── pyproject.toml
+    ├── Dockerfile
+    └── src/flights_backend/
+packages/
+└── dmap_models/             # shared wire-protocol models
 ```
 
 ## Adding a new application
 
-1. Create `src/pyview_map/applications/<name>/` with `__init__.py` and `<name>.py`.
+1. Create `services/bff/src/pyview_map/applications/<name>/` with `__init__.py` and `<name>.py`.
 2. If static assets needed, add to `app.py`: `("pyview_map.applications.<name>", "static")`
    — use the full dotted package name.
 3. If JS hook, add a `<script defer>` tag in `app.py`.
@@ -145,7 +158,7 @@ Packages from [`http_stream_prj`](https://github.com/avilior/http_stream_prj):
 | `http-stream-client` | `ClientRPC` async client |
 | `jrpc-common` | `JSONRPCRequest` / `JSONRPCResponse` models |
 
-Installed as git subdirectory dependencies (see `pyproject.toml` `[tool.uv.sources]`).
+Installed as git subdirectory dependencies (see workspace root `pyproject.toml` `[tool.uv.sources]`).
 
 ## JSON-RPC API
 

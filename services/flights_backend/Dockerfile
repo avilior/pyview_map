@@ -4,24 +4,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
 
 WORKDIR /app
 
-# Copy shared package and dependency files (mirror repo layout for path deps)
-COPY packages/dmap_models/ packages/dmap_models/
-COPY backends/flights_backend/pyproject.toml backends/flights_backend/uv.lock backends/flights_backend/
+# Copy workspace root + lock
+COPY pyproject.toml uv.lock ./
 
-WORKDIR /app/backends/flights_backend
+# Copy shared package
+COPY packages/dmap_models/ packages/dmap_models/
+
+# Copy service dependency manifest
+COPY services/flights_backend/pyproject.toml services/flights_backend/
 
 # Install dependencies (without the project itself)
 RUN --mount=type=ssh mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
-    uv sync --no-install-project
+    uv sync --package flights-backend --no-install-project
 
 # Copy source code
-COPY backends/flights_backend/src/ src/
+COPY services/flights_backend/src/ services/flights_backend/src/
 
 # Install the project
-RUN uv sync
+RUN uv sync --package flights-backend
 
 EXPOSE 80
 
 ENV FLIGHTS_PORT=80
 
-CMD ["uv", "run", "flights-backend"]
+CMD ["uv", "run", "--package", "flights-backend", "flights-backend"]

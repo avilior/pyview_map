@@ -26,7 +26,7 @@ while backend services push data via reverse JSON-RPC connections. See
 git clone https://github.com/avilior/pyview_map
 cd pyview_map
 
-just install    # uv sync
+just install    # uv sync --all-packages
 just run        # start the BFF server
 ```
 
@@ -34,13 +34,13 @@ The BFF starts at `http://localhost:8123`. To run with a backend:
 
 ```bash
 # Terminal 1 — BFF
-uv run pyview-map
+uv run --package pyview-map pyview-map
 
 # Terminal 2 — Parks backend (for /places_demo)
-cd backends/places_backend && uv run uvicorn parks_service:app --port 8200
+uv run --package places-backend places-backend
 
 # Terminal 3 — Flights backend (for /flights)
-cd backends/flights_backend && uv run uvicorn flights_service:app --port 8300
+uv run --package flights-backend flights-backend
 ```
 
 ## JSON-RPC API
@@ -88,16 +88,19 @@ See [`CLAUDE.md`](CLAUDE.md) for full parameter details, architecture docs, and 
 ## Project structure
 
 ```
-src/pyview_map/
-├── __main__.py          # Entry point — registers routes and starts uvicorn
-├── app.py               # PyView app, StaticFiles mount, root template
-├── api.py               # FastAPI sub-app, MCP router, health endpoint
-├── openrpc.py           # OpenRPC spec generator + docs/discovery endpoints
-├── components/          # Reusable LiveComponents (dynamic_map, dynamic_list)
-└── applications/        # Front-end pages (flights_demo, places_demo)
-backends/
-├── places_backend/      # Parks BE — populates /places_demo list + map
-└── flights_backend/     # Flights BE — simulates flights for /flights
+services/
+├── bff/                     # PyView BFF
+│   └── src/pyview_map/
+│       ├── __main__.py      # Entry point — registers routes and starts uvicorn
+│       ├── app.py           # PyView app, StaticFiles mount, root template
+│       ├── api.py           # FastAPI sub-app, MCP router, health endpoint
+│       ├── openrpc.py       # OpenRPC spec generator + docs/discovery endpoints
+│       ├── components/      # Reusable LiveComponents (dynamic_map, dynamic_list)
+│       └── applications/    # Front-end pages (flights_demo, places_demo)
+├── places_backend/          # Parks BE — populates /places_demo list + map
+└── flights_backend/         # Flights BE — simulates flights for /flights
+packages/
+└── dmap_models/             # Shared wire-protocol models
 ```
 
 See [`CLAUDE.md`](CLAUDE.md) for the full project layout.

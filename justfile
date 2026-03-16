@@ -4,7 +4,7 @@ bff_port := env("BFF_PORT", "8123")
 places_port := env("PLACES_PORT", "8200")
 flights_port := env("FLIGHTS_PORT", "8300")
 github_user := env("GITHUB_USER", "avilior")
-registry := "comm" + github_user
+registry := "ghcr.io/" + github_user
 git_sha := `git rev-parse --short HEAD`
 platforms := "linux/amd64,linux/arm64"
 builder := "publish_builder"
@@ -16,13 +16,13 @@ default:
 # Local development (native processes)
 # ---------------------------------------------------------------------------
 
-# Install dependencies
+# Install all workspace packages
 install:
-    uv sync
+    uv sync --all-packages
 
 # Run the BFF (pyview-map server)
 bff:
-    uv run pyview-map
+    uv run --package pyview-map pyview-map
 
 # Stop the BFF
 stop-bff:
@@ -30,7 +30,7 @@ stop-bff:
 
 # Start the Parks Service BE
 parks-be:
-    cd backends/places_backend && uv run places-backend
+    uv run --package places-backend places-backend
 
 # Stop the Parks Service BE
 stop-parks-be:
@@ -38,7 +38,7 @@ stop-parks-be:
 
 # Start the Flights Service BE
 flights-be:
-    cd backends/flights_backend && uv run flights-backend
+    uv run --package flights-backend flights-backend
 
 # Stop the Flights Service BE
 stop-flights-be:
@@ -47,8 +47,8 @@ stop-flights-be:
 # Start Parks BE + BFF, open /places_demo
 places: stop-all
     #!/usr/bin/env bash
-    cd backends/places_backend && uv run places-backend &
-    uv run pyview-map &
+    uv run --package places-backend places-backend &
+    uv run --package pyview-map pyview-map &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.3; done
@@ -58,8 +58,8 @@ places: stop-all
 # Start Flights BE + BFF, open /flights
 flights: stop-all
     #!/usr/bin/env bash
-    cd backends/flights_backend && uv run flights-backend &
-    uv run pyview-map &
+    uv run --package flights-backend flights-backend &
+    uv run --package pyview-map pyview-map &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{bff_port}}; do sleep 0.3; done
@@ -69,9 +69,9 @@ flights: stop-all
 # Start both BEs + BFF, open both demos
 all: stop-all
     #!/usr/bin/env bash
-    cd backends/places_backend && uv run places-backend &
-    cd backends/flights_backend && uv run flights-backend &
-    uv run pyview-map &
+    uv run --package places-backend places-backend &
+    uv run --package flights-backend flights-backend &
+    uv run --package pyview-map pyview-map &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.3; done
@@ -148,9 +148,9 @@ release-build: release-login
     set -euo pipefail
     echo "Building and pushing images for {{platforms}} (commit {{git_sha}})..."
     for svc in \
-        "bff|.|Dockerfile" \
-        "places-backend|.|backends/places_backend/Dockerfile" \
-        "flights-backend|.|backends/flights_backend/Dockerfile"; do
+        "bff|.|services/bff/Dockerfile" \
+        "places-backend|.|services/places_backend/Dockerfile" \
+        "flights-backend|.|services/flights_backend/Dockerfile"; do
         IFS='|' read -r name ctx dockerfile <<< "$svc"
         image="{{registry}}/pyview-map-${name}"
         echo ""

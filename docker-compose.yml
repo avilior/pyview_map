@@ -2,7 +2,7 @@ services:
   bff:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: services/bff/Dockerfile
       ssh:
         - default
     ports:
@@ -21,7 +21,7 @@ services:
   places-backend:
     build:
       context: .
-      dockerfile: backends/places_backend/Dockerfile
+      dockerfile: services/places_backend/Dockerfile
       ssh:
         - default
     ports:
@@ -37,7 +37,7 @@ services:
   flights-backend:
     build:
       context: .
-      dockerfile: backends/flights_backend/Dockerfile
+      dockerfile: services/flights_backend/Dockerfile
       ssh:
         - default
     ports:
