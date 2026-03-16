@@ -196,7 +196,6 @@ function _addMarkerFromEl(instance, el, hookCtx) {
     dmarkIcon: iconName,
     dmarkHeading: heading,
     dmarkSpeed: speed,
-    draggable: true,
   })
     .bindTooltip(name, { permanent: false, direction: "top" });
 

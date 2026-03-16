@@ -31,6 +31,19 @@ Requires `GITHUB_USER` and `GITHUB_TOKEN` (PAT with `read:packages` + `write:pac
 
 Deploy compose file: `docker-compose.release.yml` (pull-only, no build context). Use `IMAGE_TAG=<sha>` to pin a specific version.
 
+### Remote deployment
+
+```bash
+just deploy avi@nuc8.local /home/avi/docker/pyview   # scp files to remote
+# Then on remote:
+cp .env.example .env   # edit with credentials
+just up                # login + pull + start all services
+just health            # check service health
+just upgrade <sha>     # deploy a specific version
+```
+
+`justfile.deploy` is copied to the remote as `justfile`. It has: `up`, `down`, `restart`, `upgrade`, `up-flights`, `up-places`, `health`, `status`, `logs`, `logs-service`, `images`, `list`.
+
 ## Project layout
 
 ```
