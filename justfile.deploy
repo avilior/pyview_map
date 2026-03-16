@@ -1,0 +1,121 @@
+set dotenv-load
+
+flights_bff_port := env("FLIGHTS_BFF_PORT", "8123")
+places_bff_port := env("PLACES_BFF_PORT", "8124")
+places_port := env("PLACES_PORT", "8200")
+flights_port := env("FLIGHTS_PORT", "8300")
+github_user := env("GITHUB_USER", "avilior")
+registry := "ghcr.io/" + github_user
+compose := "docker compose -f docker-compose.release.yml"
+
+default:
+    @just --justfile {{justfile()}} --list
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+# Log in to GitHub Container Registry
+login:
+    echo "$GITHUB_TOKEN" | docker login ghcr.io -u {{github_user}} --password-stdin
+
+# ---------------------------------------------------------------------------
+# Deploy
+# ---------------------------------------------------------------------------
+
+# Pull latest images and start all services
+up: login
+    #!/usr/bin/env bash
+    {{compose}} pull
+    {{compose}} up -d
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    echo "Ready."
+    echo "  Flights: http://$(hostname):{{flights_bff_port}}/flights"
+    echo "  Places:  http://$(hostname):{{places_bff_port}}/places_demo"
+
+# Start only flights (BFF + backend)
+up-flights: login
+    #!/usr/bin/env bash
+    {{compose}} pull flights-bff flights-backend
+    {{compose}} up -d flights-bff flights-backend
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
+    echo "Ready."
+    echo "  Flights: http://$(hostname):{{flights_bff_port}}/flights"
+
+# Start only places (BFF + backend)
+up-places: login
+    #!/usr/bin/env bash
+    {{compose}} pull places-bff places-backend
+    {{compose}} up -d places-bff places-backend
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    echo "Ready."
+    echo "  Places: http://$(hostname):{{places_bff_port}}/places_demo"
+
+# Stop all services
+down:
+    {{compose}} down
+
+# Restart all services (pull + recreate)
+restart: down up
+
+# ---------------------------------------------------------------------------
+# Upgrade
+# ---------------------------------------------------------------------------
+
+# Pull and deploy a specific version
+upgrade tag="latest":
+    #!/usr/bin/env bash
+    echo "Upgrading to IMAGE_TAG={{tag}}..."
+    IMAGE_TAG={{tag}} {{compose}} pull
+    IMAGE_TAG={{tag}} {{compose}} up -d
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    echo "Ready (IMAGE_TAG={{tag}})."
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+
+# Tail logs
+logs:
+    {{compose}} logs -f
+
+# Tail logs for a specific service
+logs-service service:
+    {{compose}} logs -f {{service}}
+
+# Show running containers and health
+status:
+    {{compose}} ps
+
+# Check health of all services
+health:
+    #!/usr/bin/env bash
+    echo "Flights BFF  ({{flights_bff_port}}): $(curl -s http://localhost:{{flights_bff_port}}/api/health || echo 'DOWN')"
+    echo "Places BFF   ({{places_bff_port}}): $(curl -s http://localhost:{{places_bff_port}}/api/health || echo 'DOWN')"
+    echo "Places BE    ({{places_port}}): $(curl -s http://localhost:{{places_port}}/api/health || echo 'DOWN')"
+    echo "Flights BE   ({{flights_port}}): $(curl -s http://localhost:{{flights_port}}/api/health || echo 'DOWN')"
+
+# Show which images are running
+images:
+    {{compose}} images
+
+# Show current release images pulled locally
+list:
+    #!/usr/bin/env bash
+    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend; do
+        echo "==> ${pkg}"
+        docker image ls "{{registry}}/${pkg}" 2>/dev/null || echo "  (not pulled)"
+        echo ""
+    done

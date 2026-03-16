@@ -207,6 +207,26 @@ release-down:
 release-logs:
     docker compose -f docker-compose.release.yml logs -f
 
+# Deploy files to a remote server via scp
+# Usage: just deploy host=user@server dest=/path/on/server
+deploy host="" dest="~/pyview-map":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{host}}" ]; then
+        echo "Usage: just deploy host=user@server [dest=~/pyview-map]"
+        exit 1
+    fi
+    echo "Deploying to {{host}}:{{dest}}..."
+    ssh {{host}} "mkdir -p {{dest}}"
+    scp docker-compose.release.yml {{host}}:{{dest}}/
+    scp justfile.deploy {{host}}:{{dest}}/justfile
+    scp .env.example {{host}}:{{dest}}/.env.example
+    echo ""
+    echo "Done. On the remote server:"
+    echo "  cd {{dest}}"
+    echo "  cp .env.example .env   # edit with your settings"
+    echo "  just up                # pull + start all services"
+
 # Show current release images in GHCR
 release-list:
     #!/usr/bin/env bash
