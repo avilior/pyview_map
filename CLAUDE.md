@@ -15,6 +15,21 @@ just flights             # Flights BE + BFF
 
 Routes: `/flights` (flight simulation), `/places_demo` (places list + map)
 
+### Release (GHCR)
+
+```bash
+just release-build       # Build multi-arch images + push to ghcr.io
+just release-up          # Pull + start from registry
+just release-down        # Stop release services
+just release-logs        # Tail release logs
+```
+
+Images are built for `linux/amd64` + `linux/arm64` and pushed to `ghcr.io/avilior/pyview-map-{bff,places-backend,flights-backend}` with `:latest` + `:` tags.
+
+Requires `GITHUB_USER` and `GITHUB_TOKEN` (PAT with `read:packages` + `write:packages`) in `.env`. See `.env.example`.
+
+Deploy compose file: `docker-compose.release.yml` (pull-only, no build context). Use `IMAGE_TAG=<sha>` to pin a specific version.
+
 ## Project layout
 
 ```
