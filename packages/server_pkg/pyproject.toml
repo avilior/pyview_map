@@ -1,0 +1,27 @@
+[project]
+name = "http_stream_transport"
+version = "0.1.0"
+description = "MCP Streamable HTTP Transport server"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28.1",
+    "jrpc_common",
+    "json-rpc>=1.15.0",
+    "pydantic-settings>=2",
+    "pyyaml>=6",
+    "uvicorn[standard]>=0.34",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.28.1", "pytest>=8", "ruff>=0.9", "ty>=0.0.15"]
+
+[tool.uv.sources]
+jrpc_common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["http_stream_transport"]

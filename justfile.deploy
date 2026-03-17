@@ -4,6 +4,8 @@ flights_bff_port := env("FLIGHTS_BFF_PORT", "8123")
 places_bff_port := env("PLACES_BFF_PORT", "8124")
 places_port := env("PLACES_PORT", "8200")
 flights_port := env("FLIGHTS_PORT", "8300")
+be_port := env("BE_PORT", "8000")
+fe_port := env("FE_PORT", "8001")
 github_user := env("GITHUB_USER", "avilior")
 registry := "ghcr.io/" + github_user
 compose := "docker compose -f docker-compose.release.yml"
@@ -33,9 +35,12 @@ up: login
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
     echo "Ready."
     echo "  Flights: http://$(hostname):{{flights_bff_port}}/flights"
     echo "  Places:  http://$(hostname):{{places_bff_port}}/places_demo"
+    echo "  Debate:  http://$(hostname):{{fe_port}}"
 
 # Start only flights (BFF + backend)
 up-flights: login
@@ -59,6 +64,17 @@ up-places: login
     echo "Ready."
     echo "  Places: http://$(hostname):{{places_bff_port}}/places_demo"
 
+# Start only debate (BFF + backend)
+up-debate: login
+    #!/usr/bin/env bash
+    {{compose}} pull debate-bff debate-backend
+    {{compose}} up -d debate-bff debate-backend
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
+    echo "Ready."
+    echo "  Debate: http://$(hostname):{{fe_port}}"
+
 # Stop all services
 down:
     {{compose}} down
@@ -81,6 +97,8 @@ upgrade tag="latest":
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
     echo "Ready (IMAGE_TAG={{tag}})."
 
 # ---------------------------------------------------------------------------
@@ -106,6 +124,8 @@ health:
     echo "Places BFF   ({{places_bff_port}}): $(curl -s http://localhost:{{places_bff_port}}/api/health || echo 'DOWN')"
     echo "Places BE    ({{places_port}}): $(curl -s http://localhost:{{places_port}}/api/health || echo 'DOWN')"
     echo "Flights BE   ({{flights_port}}): $(curl -s http://localhost:{{flights_port}}/api/health || echo 'DOWN')"
+    echo "Debate BE    ({{be_port}}): $(curl -s http://localhost:{{be_port}}/health || echo 'DOWN')"
+    echo "Debate BFF   ({{fe_port}}): $(curl -s -o /dev/null -w '%{http_code}' http://localhost:{{fe_port}} || echo 'DOWN')"
 
 # Show which images are running
 images:
@@ -114,7 +134,7 @@ images:
 # Show current release images pulled locally
 list:
     #!/usr/bin/env bash
-    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend; do
+    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend pyview-map-debate-backend pyview-map-debate-bff; do
         echo "==> ${pkg}"
         docker image ls "{{registry}}/${pkg}" 2>/dev/null || echo "  (not pulled)"
         echo ""

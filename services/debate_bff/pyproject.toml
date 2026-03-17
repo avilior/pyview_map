@@ -1,0 +1,29 @@
+[project]
+name = "debate-bff"
+version = "0.1.0"
+description = "Debate chat UI — PyView BFF serving the browser via WebSocket/LiveView"
+requires-python = ">=3.14"
+dependencies = [
+    "pyview-web>=0.8.0",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28.1",
+    "http_stream_client",
+    "jrpc_common",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.9"]
+
+[tool.uv.sources]
+http_stream_client = { workspace = true }
+jrpc_common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+debate-bff = "debate_bff.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/debate_bff"]

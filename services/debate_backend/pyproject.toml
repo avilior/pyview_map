@@ -1,0 +1,32 @@
+[project]
+name = "debate-backend"
+version = "0.1.0"
+description = "Debate application — LLM agent debate orchestration via JSON-RPC"
+requires-python = ">=3.14"
+dependencies = [
+    "http_stream_transport",
+    "jrpc_common",
+    "langchain-core>=0.3",
+    "langchain-ollama>=0.2",
+    "langgraph>=0.2",
+    "pydantic-settings>=2",
+    "pyyaml>=6",
+    "uvicorn[standard]>=0.34",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.9"]
+
+[tool.uv.sources]
+http_stream_transport = { workspace = true }
+jrpc_common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+debate-backend = "debate_backend.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/debate_backend"]

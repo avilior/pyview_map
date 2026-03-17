@@ -20,6 +20,10 @@ MANIFEST
 venv/
 ENV/
 env/
+
+# Per-package venvs (uv workspace)
+packages/*/.venv/
+services/*/.venv/
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/

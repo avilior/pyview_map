@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "debate_id": "2ac7768a-45e2-4081-824a-fde1b0965ef7",
+  "topic": "Tabs are better than Spaces",
+  "status": "ended",
+  "current_turn": 1,
+  "template": {
+    "name": "classic",
+    "description": "Classic two-agent debate \u2014 FOR vs AGAINST",
+    "agents": [
+      {
+        "name": "Agent Alpha",
+        "model": "llama3.2",
+        "system_prompt": "You are Agent Alpha, a skilled debater. The debate topic is: \"Tabs are better than Spaces\". You argue FOR the topic. Be concise but persuasive. Keep your responses to 2-3 paragraphs.\n"
+      },
+      {
+        "name": "Agent Beta",
+        "model": "llama3.2",
+        "system_prompt": "You are Agent Beta, a skilled debater. The debate topic is: \"Tabs are better than Spaces\". You argue AGAINST the topic. Be concise but persuasive. Keep your responses to 2-3 paragraphs.\n"
+      }
+    ]
+  },
+  "strip_think": true,
+  "save_filename": "tabs_vs_spaces",
+  "history": [
+    {
+      "role": "agent-0",
+      "name": "Agent Alpha",
+      "content": "The debate on tab usage versus spacing in code organization has been a longstanding one. While some may argue that spaces provide clarity and readability, I firmly believe that tabs offer an advantage over their spaced counterparts. One of the primary reasons for this is consistency.\n\nIn coding languages such as Java, C++, and Python, indentation is often used to denote block-level structure. When using spaces, it can be challenging to achieve true consistency in indentation levels across different platforms or even within the same project. This inconsistency can lead to confusion among developers and make code maintenance more difficult. On the other hand, tabs provide a consistent level of indentation that reduces ambiguity and makes it easier for developers to read and understand code.\n\nFurthermore, tabs have been widely adopted in the programming industry, with most integrated development environments (IDEs) and text editors supporting tab-based indentation. This widespread adoption ensures that coding standards are more easily followed, reducing errors and improving overall code quality."
+    }
+  ],
+  "saved_at": "2026-02-19T22:47:09.016230+00:00"
+}

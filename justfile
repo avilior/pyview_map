@@ -4,6 +4,8 @@ flights_bff_port := env("FLIGHTS_BFF_PORT", "8123")
 places_bff_port := env("PLACES_BFF_PORT", "8124")
 places_port := env("PLACES_PORT", "8200")
 flights_port := env("FLIGHTS_PORT", "8300")
+be_port := env("BE_PORT", "8000")
+fe_port := env("FE_PORT", "8001")
 github_user := env("GITHUB_USER", "avilior")
 registry := "ghcr.io/" + github_user
 git_sha := `git rev-parse --short HEAD`
@@ -14,7 +16,7 @@ default:
     @just --list
 
 # ---------------------------------------------------------------------------
-# Local development (native processes)
+# Local development — Flights & Places
 # ---------------------------------------------------------------------------
 
 # Install all workspace packages
@@ -75,24 +77,84 @@ flights: stop-all
     echo "Ready."
     open http://localhost:{{flights_bff_port}}/flights
 
-# Start both BEs + both BFFs, open both demos
+# ---------------------------------------------------------------------------
+# Local development — Debate
+# ---------------------------------------------------------------------------
+
+# Start the debate backend (port {{be_port}})
+debate-backend:
+    uv run --package debate-backend debate-backend
+
+# Stop the debate backend
+stop-debate-backend:
+    pkill -f "debate-backend" 2>/dev/null || true
+
+# Start the debate BFF (port {{fe_port}})
+debate-bff:
+    FE_PORT={{fe_port}} uv run --package debate-bff debate-bff
+
+# Stop the debate BFF
+stop-debate-bff:
+    pkill -f "debate-bff" 2>/dev/null || true
+
+# Start debate backend + BFF and open browser
+debate: stop-all
+    #!/usr/bin/env bash
+    uv run --package debate-backend debate-backend &
+    FE_PORT={{fe_port}} uv run --package debate-bff debate-bff &
+    echo "Waiting for backend..."
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.3; done
+    echo "Waiting for BFF..."
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.3; done
+    echo "Ready."
+    open http://localhost:{{fe_port}}
+
+# ---------------------------------------------------------------------------
+# Local development — All services
+# ---------------------------------------------------------------------------
+
+# Start all BEs + all BFFs, open all demos
 all: stop-all
     #!/usr/bin/env bash
     uv run --package places-backend places-backend &
     uv run --package flights-backend flights-backend &
     uv run --package flights-bff flights-bff &
     uv run --package places-bff places-bff &
+    uv run --package debate-backend debate-backend &
+    FE_PORT={{fe_port}} uv run --package debate-bff debate-bff &
     echo "Waiting for services..."
     until curl -s -o /dev/null http://localhost:{{places_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.3; done
     until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.3; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.3; done
     echo "Ready."
     open http://localhost:{{flights_bff_port}}/flights
     open http://localhost:{{places_bff_port}}/places_demo
+    open http://localhost:{{fe_port}}
 
 # Stop everything (local)
-stop-all: stop-parks-be stop-flights-be stop-flights-bff stop-places-bff
+stop-all: stop-parks-be stop-flights-be stop-flights-bff stop-places-bff stop-debate-backend stop-debate-bff
+
+# ---------------------------------------------------------------------------
+# Testing
+# ---------------------------------------------------------------------------
+
+# Run transport tests (packages/server_pkg)
+test-transport:
+    cd packages/server_pkg && uv run pytest -v
+
+# Run debate application tests
+test-debate:
+    cd services/debate_backend && uv run pytest -v
+
+# Run client tests
+test-client:
+    cd packages/client && uv run pytest -v
+
+# Run all tests
+test: test-transport test-debate test-client
 
 # ---------------------------------------------------------------------------
 # Docker (containerized)
@@ -102,7 +164,7 @@ stop-all: stop-parks-be stop-flights-be stop-flights-bff stop-places-bff
 docker-build:
     docker compose build
 
-# Start all services in Docker, open both demos
+# Start all services in Docker, open all demos
 docker-up:
     #!/usr/bin/env bash
     docker compose up -d
@@ -111,9 +173,12 @@ docker-up:
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
     echo "Ready."
     open http://localhost:{{flights_bff_port}}/flights
     open http://localhost:{{places_bff_port}}/places_demo
+    open http://localhost:{{fe_port}}
 
 # Stop all Docker services
 docker-down:
@@ -146,6 +211,16 @@ docker-flights:
     echo "Ready."
     open http://localhost:{{flights_bff_port}}/flights
 
+# Start only debate in Docker
+docker-debate:
+    #!/usr/bin/env bash
+    docker compose up -d debate-backend debate-bff
+    echo "Waiting for services..."
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
+    echo "Ready."
+    open http://localhost:{{fe_port}}
+
 # ---------------------------------------------------------------------------
 # Release (build multi-arch images → push to GHCR → deploy from registry)
 # ---------------------------------------------------------------------------
@@ -163,7 +238,9 @@ release-build: release-login
         "flights-bff|.|services/flights_bff/Dockerfile" \
         "places-bff|.|services/places_bff/Dockerfile" \
         "places-backend|.|services/places_backend/Dockerfile" \
-        "flights-backend|.|services/flights_backend/Dockerfile"; do
+        "flights-backend|.|services/flights_backend/Dockerfile" \
+        "debate-backend|.|services/debate_backend/Dockerfile" \
+        "debate-bff|.|services/debate_bff/Dockerfile"; do
         IFS='|' read -r name ctx dockerfile <<< "$svc"
         image="{{registry}}/pyview-map-${name}"
         echo ""
@@ -173,7 +250,6 @@ release-build: release-login
             --platform {{platforms}} \
             --tag "${image}:{{git_sha}}" \
             --tag "${image}:latest" \
-            --ssh default \
             --push \
             -f "${dockerfile}" \
             "${ctx}"
@@ -184,6 +260,8 @@ release-build: release-login
     echo "  {{registry}}/pyview-map-places-bff:{{git_sha}}"
     echo "  {{registry}}/pyview-map-places-backend:{{git_sha}}"
     echo "  {{registry}}/pyview-map-flights-backend:{{git_sha}}"
+    echo "  {{registry}}/pyview-map-debate-backend:{{git_sha}}"
+    echo "  {{registry}}/pyview-map-debate-bff:{{git_sha}}"
 
 # Pull and start release images
 release-up:
@@ -195,9 +273,12 @@ release-up:
     until curl -s -o /dev/null http://localhost:{{flights_port}}/api/health; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{flights_bff_port}}; do sleep 0.5; done
     until curl -s -o /dev/null http://localhost:{{places_bff_port}}; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{be_port}}/health; do sleep 0.5; done
+    until curl -s -o /dev/null http://localhost:{{fe_port}}; do sleep 0.5; done
     echo "Ready."
     open http://localhost:{{flights_bff_port}}/flights
     open http://localhost:{{places_bff_port}}/places_demo
+    open http://localhost:{{fe_port}}
 
 # Stop release services
 release-down:
@@ -226,7 +307,7 @@ deploy host dest="~/pyview-map":
 # Show current release images in GHCR
 release-list:
     #!/usr/bin/env bash
-    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend; do
+    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend pyview-map-debate-backend pyview-map-debate-bff; do
         echo "==> ${pkg}"
         docker image ls "{{registry}}/${pkg}" 2>/dev/null || echo "  (not pulled locally)"
         echo ""

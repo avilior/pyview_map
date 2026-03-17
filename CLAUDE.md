@@ -1,48 +1,27 @@
 # pyview_map
 
-A PyView LiveView demo app showing interactive Leaflet.js maps.
+A uv workspace monorepo with PyView LiveView apps (interactive maps, flight
+simulation) and an LLM debate platform, sharing a common MCP streaming
+transport layer.
 
-**Claude Code memory**: `~/.claude/projects/-Users-avilior-developer-python-pyview-map/memory/MEMORY.md`
+## Architecture
 
-## Running
+### Shared infrastructure (packages/)
 
-```bash
-uv run --package flights-bff flights-bff   # Flights BFF on :8123
-uv run --package places-bff places-bff     # Places BFF on :8124
-just all                                   # Both BEs + both BFFs, opens browser
-just places                                # Parks BE + Places BFF
-just flights                               # Flights BE + Flights BFF
-```
+1. **Transport** (`server_pkg`) — FastAPI HTTP router for `/mcp`, SSE streaming, auth, sessions
+2. **JSON-RPC** (`server_pkg`) — `JRPCService` dispatch/registry with handler introspection
+3. **Client SDK** (`client`) — `ClientRPC` async RPC client
+4. **Wire models** (`jrpc_common`) — shared JSON-RPC 2.0 models and audit tracking
+5. **BFF Engine** (`bff_engine`) — shared BFF framework: components, drivers, API/app factories
+6. **Data Models** (`dmap_models`) — shared wire-protocol models for map/list components
 
-Routes: `/flights` (flight simulation on flights-bff:8123), `/places_demo` (places list + map on places-bff:8124)
+Dependency direction: Services → Packages (never the reverse)
 
-### Release (GHCR)
+### Service pattern (services/)
 
-```bash
-just release-build       # Build multi-arch images + push to ghcr.io
-just release-up          # Pull + start from registry
-just release-down        # Stop release services
-just release-logs        # Tail release logs
-```
-
-Images are built for `linux/amd64` + `linux/arm64` and pushed to `ghcr.io/avilior/pyview-map-{flights-bff,places-bff,places-backend,flights-backend}` with `:latest` + `:<sha>` tags.
-
-Requires `GITHUB_USER` and `GITHUB_TOKEN` (PAT with `read:packages` + `write:packages`) in `.env`. See `.env.example`.
-
-Deploy compose file: `docker-compose.release.yml` (pull-only, no build context). Use `IMAGE_TAG=<sha>` to pin a specific version.
-
-### Remote deployment
-
-```bash
-just deploy avi@nuc8.local /home/avi/docker/pyview   # scp files to remote
-# Then on remote:
-cp .env.example .env   # edit with credentials
-just up                # login + pull + start all services
-just health            # check service health
-just upgrade <sha>     # deploy a specific version
-```
-
-`justfile.deploy` is copied to the remote as `justfile`. It has: `up`, `down`, `restart`, `upgrade`, `up-flights`, `up-places`, `health`, `status`, `logs`, `logs-service`, `images`, `list`.
+Each application is a BE + BFF pair:
+- **Backend (BE)** — FastAPI + JSON-RPC handlers, domain logic
+- **BFF** — PyView LiveView frontend, connects to BE via `ClientRPC`
 
 ## Project layout
 
@@ -50,9 +29,11 @@ just upgrade <sha>     # deploy a specific version
 pyproject.toml               # workspace root (no app code)
 uv.lock                     # single unified lock
 packages/
+├── jrpc_common/             # shared JSON-RPC 2.0 models
+├── server_pkg/              # HTTP/SSE transport + JSON-RPC dispatch
+├── client/                  # ClientRPC async client SDK
 ├── dmap_models/             # shared wire-protocol models
 └── bff_engine/              # shared BFF engine — components, drivers, API/app factories
-    ├── pyproject.toml
     └── src/bff_engine/
         ├── bff_app.py       # create_app() factory — PyView app, StaticFiles, CSS
         ├── bff_api.py       # create_api() factory — FastAPI, MCP router, bff.subscribe
@@ -61,28 +42,77 @@ packages/
         └── dynamic_list/    # List LiveComponent + ListDriver + models + sources + api/
 services/
 ├── flights_bff/             # Flights BFF (port 8123)
-│   ├── pyproject.toml
-│   ├── Dockerfile
-│   └── src/flights_bff/
-│       ├── __main__.py      # Entry point — creates app/api, registers /flights
-│       ├── settings.py      # FLIGHTS_BFF_* env vars
-│       └── flights_demo.py  # FlightsView — MapDriver + flights BE
+├── flights_backend/         # Flights BE (port 8300)
 ├── places_bff/              # Places BFF (port 8124)
-│   ├── pyproject.toml
-│   ├── Dockerfile
-│   └── src/places_bff/
-│       ├── __main__.py      # Entry point — creates app/api, registers /places_demo
-│       ├── settings.py      # PLACES_BFF_* env vars
-│       └── places_demo.py   # PlacesView — ListDriver + MapDriver + parks BE
-├── places_backend/          # parks_service.py (port 8200)
-│   ├── pyproject.toml
-│   ├── Dockerfile
-│   └── src/places_backend/
-└── flights_backend/         # flights_service.py (port 8300)
-    ├── pyproject.toml
-    ├── Dockerfile
-    └── src/flights_backend/
+├── places_backend/          # Places/Parks BE (port 8200)
+├── debate_backend/          # Debate BE (port 8000)
+│   ├── src/debate_backend/
+│   │   ├── __main__.py      # Entry point, imports debate modules, runs uvicorn
+│   │   ├── debate.py        # Debate model + JSON-RPC handlers
+│   │   ├── commands.py      # Slash-command dispatcher
+│   │   ├── spec_parser.py   # Markdown spec file parser
+│   │   └── engine/          # LangGraph orchestration
+│   ├── tests/               # 84 debate tests
+│   └── data/                # templates/, debates/, specs/
+└── debate_bff/              # Debate BFF (port 8001)
+    └── src/debate_bff/
+        ├── __main__.py      # uvicorn on port 8001
+        ├── app.py
+        ├── transcript_store.py
+        ├── views/chat/chat_view.py
+        └── services/rpc_client.py
+docs/
+├── specification/           # MCP spec text (reference)
+├── langgraph-refactor.md    # LangGraph architecture decisions
+├── adr-dialog-implementation.md
+├── api-reference.md
+└── architecture_bff_be.md
 ```
+
+## Commands
+
+```bash
+just install           # uv sync --all-packages
+
+# Local development
+just flights           # Flights BE + BFF, opens browser
+just places            # Parks BE + Places BFF, opens browser
+just debate            # Debate BE + BFF, opens browser
+just all               # All 6 services, opens all demos
+just stop-all          # Stop everything
+
+# Testing
+just test              # All tests (transport + debate + client)
+just test-transport    # Transport tests (packages/server_pkg) — 80 tests
+just test-debate       # Debate tests (services/debate_backend) — 84 tests
+just test-client       # Client tests (packages/client)
+
+# Docker
+just docker-build      # Build all images
+just docker-up         # Start all in Docker
+just docker-places     # Start only places in Docker
+just docker-flights    # Start only flights in Docker
+just docker-debate     # Start only debate in Docker
+
+# Release (GHCR)
+just release-build     # Build multi-arch images + push to ghcr.io
+just release-up        # Pull + start from registry
+just release-list      # Show local release images
+
+# Deploy
+just deploy user@host [dest]   # scp compose + justfile to remote
+```
+
+Ports are configurable via env vars: `FLIGHTS_BFF_PORT`, `PLACES_BFF_PORT`,
+`PLACES_PORT`, `FLIGHTS_PORT`, `BE_PORT`, `FE_PORT`.
+
+## Dependencies
+
+Managed with `uv` workspaces. All inter-package deps use `{ workspace = true }`.
+
+- `uv sync --all-packages` — install everything
+- `cd packages/server_pkg && uv sync --group dev` — install server deps
+- `cd services/debate_backend && uv sync --group dev` — install debate deps
 
 ## Adding a new application
 
@@ -162,9 +192,6 @@ items_html = stream_for(assigns.items, lambda dom_id, item:
     t'<div id="{dom_id}" phx-hook="ItemHook">{item.name}</div>')
 return t'<div id="items" phx-update="stream">{items_html}</div>'
 
-# Ibis template:
-# {% for dom_id, item in items %} ... {% endfor %} inside phx-update="stream"
-
 # Mutations (server side):
 socket.context.items.insert(new_item)                # append
 socket.context.items.insert(item, update_only=True)  # update
@@ -181,17 +208,31 @@ socket.context.items.delete_by_id("items-<id>")      # remove
 PubSub topics: `{prefix}:{channel}` (broadcast) or `{prefix}:{channel}:{cid}` (targeted).
 Server-to-client commands namespaced: `to_push_event(target=channel)` → `"left:setView"`.
 
-## Dependencies
+## Spec compliance (MCP transport)
 
-Packages from [`http_stream_prj`](https://github.com/avilior/http_stream_prj):
+The server enforces MCP streaming spec rules:
+- Spec §2: POST requests must include `Accept: application/json, text/event-stream`
+- Spec §3: Batches must not mix responses with requests/notifications
+- Spec §4: Notification/response-only payloads return 202
+- Spec §5-6: Requests return SSE or JSON at the server's discretion
 
-| Package | Purpose |
-|---|---|
-| `http-stream-transport` | `JRPCService`, `mcp_router` |
-| `http-stream-client` | `ClientRPC` async client |
-| `jrpc-common` | `JSONRPCRequest` / `JSONRPCResponse` models |
+The spec source is in `docs/specification/streamable_http_transport`.
 
-Installed as git subdirectory dependencies (see workspace root `pyproject.toml` `[tool.uv.sources]`).
+## Testing
+
+Tests use `starlette.testclient.TestClient` (in-process, no running server).
+
+- `packages/server_pkg/tests/` — transport tests (80 tests)
+- `services/debate_backend/tests/` — debate tests (84 tests)
+
+## Linting & Type Checking
+
+- `ruff check` — lint (from repo root)
+- `cd packages/server_pkg && uv run ty check` — type check with ty
+
+## Ruff & Python 3.14
+
+Ruff 0.15+ supports t-string syntax (PEP 750) — no file exclusions needed.
 
 ## JSON-RPC API
 
@@ -205,6 +246,196 @@ Full API reference with method tables, event types, channel/cid routing, and usa
 - **Follow-marker vs panTo** — Use `map.followMarker` for continuous tracking. Do NOT use `map.panTo` for continuous tracking (browser compositor issue).
 - **LatLng conversion** — Internal: `LatLng` dataclass. Wire: `[lat, lng]` arrays. Convert at boundaries with `.to_list()` / `LatLng.from_list()`.
 
-## Ruff & Python 3.14
+---
 
-Ruff 0.15+ supports t-string syntax (PEP 750) — no file exclusions needed.
+## Debate Application
+
+The debate app (`services/debate_backend/`) lets N LLM agents debate a topic
+with a user as moderator. Orchestration is handled by a LangGraph graph.
+
+### Key modules
+
+- **`debate.py`** — `Debate` domain model + `DebateEngine` wrapper, in-memory
+  store (`_engines`), JSON-RPC handlers:
+  `debate.start`, `debate.next_turn`, `debate.inject`, `debate.announce`,
+  `debate.status`, `debate.stop`
+- **`engine/`** — LangGraph orchestration layer:
+  - `state.py` — `DebateState` TypedDict (routing state only; includes `main_flow_speaker`)
+  - `models.py` — `TemplateConfig`, `RouterConfig`, `EvaluatorConfig` (Pydantic);
+    `AgentConfig.server_url: str` is required with no default
+  - `llm_factory.py` — `create_llm(model_string, server_url)` → LangChain `BaseChatModel`;
+    exports `OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"` (used as fallback
+    only when loading old saves that lack `server_url`)
+  - `routers/` — `Router` protocol + `RoundRobinRouter`
+  - `graphs/debate_graph.py` — builds the compiled LangGraph; LLM errors surface
+    as `[LLM Error @ {server_url} — ExcType: message]` in the agent bubble
+- **`commands.py`** — slash-command dispatcher (`debate.command` RPC method),
+  file I/O for YAML templates, JSON saves, spec files, transcript generation
+- **`spec_parser.py`** — `parse_spec_file(path) -> SpecData`; parses `# Topic`,
+  `# Max Rounds`, `# Background`, `# Agent Guidelines` / `## AgentName` sections
+
+### Model string format
+
+```
+"llama3.2"                  → Ollama llama3.2  (bare name defaults to ollama)
+"ollama:llama3.2"           → Ollama llama3.2
+"openai:gpt-4o"             → OpenAI gpt-4o
+"anthropic:claude-opus-4-6" → Anthropic claude-opus-4-6
+```
+
+### Slash Commands
+
+| Command | Description |
+|---|---|
+| `/new -t <template> -o <filename> [-s <spec>] [<topic>]` | Start a new debate from a template; `-s` loads topic/background/guidelines from a spec file |
+| `/save` | Save the current debate |
+| `/save-as <filename>` | Save with a specific name |
+| `/load <filename>` | Load and resume a saved debate |
+| `/continue [N]` | Run N full rounds (default 1, max 20) |
+| `/end` | End the current debate and save it |
+| `/templates` | List available debate templates |
+| `/template <name>` | Show the raw YAML contents of a debate template |
+| `/specs` | List available debate spec files |
+| `/spec <filename>` | Show the raw markdown contents of a spec file |
+| `/debates` | List saved debates |
+| `/debate <filename>` | Show topic, agents, status, and full turn history of a saved debate |
+| `/transcript [-html] [-i <filename>]` | Open transcript in a new tab |
+| `/help` | Show available commands |
+| `/config` | Show server configuration |
+
+### Moderator Features
+
+- **System prompt awareness** — `build_messages()` auto-appends a moderator
+  clause so agents know to follow moderator instructions (injected at LLM-call
+  time, not stored on the agent).
+- **`@Agent` targeting** — prefix a message with `@AgentName` to start a side
+  conversation with that specific agent (only that agent responds). The main
+  debate position is saved in LangGraph state (`main_flow_speaker`). A
+  **"Resume Debate"** button appears and resumes from exactly where the main
+  debate paused.
+- **Next Turn is always manual** — untagged moderator messages are recorded via
+  `debate.announce()` (no auto-response). The user always clicks "Next Turn" to
+  advance the main debate. Only `@Agent`-targeted messages trigger an immediate
+  response.
+- **Auto-opening** — after `/new`, the frontend auto-generates a moderator
+  opening announcement, shows it as a Moderator bubble, and calls
+  `debate.announce` to persist it in backend history. If a spec file was used,
+  the opening mentions it.
+- **`/continue N`** — runs N full rounds automatically (frontend chains
+  `debate_continue` events recursively).
+- **`<think>` stripping** — `strip_think` flag (default `True`). Blocks are
+  stripped from LLM input but preserved in history for transcripts.
+
+### Debate Spec Files
+
+Spec files (`data/specs/*.md`) define a debate's topic, background, and
+per-agent guidelines in a simple Markdown format:
+
+```markdown
+# Topic
+Should AI replace humans in the workplace?
+
+# Background
+Recent advances in AI...
+
+# Agent Guidelines
+## Agent Alpha
+Argue strongly in favor of AI replacing humans...
+## Agent Beta
+Argue against AI replacing humans...
+```
+
+- Parsed by `spec_parser.py` → `SpecData(topic, background, agent_guidelines, max_rounds)`
+- Used via `/new -t <template> -o <filename> -s <spec>` (topic from spec if no
+  positional topic given; positional arg overrides spec topic)
+- `Debate` stores `spec_file`, `background_info`, `agent_instructions`,
+  `max_rounds`; injected into agent system prompts by `build_messages()` and
+  persisted in saved JSON
+- `max_rounds` lives in the spec file (`# Max Rounds` section), not in
+  templates. `None` means no limit. When the router detects the round cap,
+  `run_turn()` checks `get_state().values["next_action"] == "end"` after
+  `ainvoke`, calls `debate.stop()`, and returns `debate_ended: True` to the
+  frontend, which disables the Next Turn button and shows an amber badge.
+- `data/specs/ai_workplace.md` — example spec file
+- Path: `settings.debate_specs_dir`
+
+### Per-Agent `server_url`
+
+Every agent in a template YAML **must** have an explicit `server_url`:
+
+```yaml
+agents:
+  - name: "Advocate"
+    model: "llama3.2"
+    server_url: "http://localhost:11434"
+```
+
+`server_url` has no default. `OLLAMA_DEFAULT_BASE_URL` in `llm_factory.py` is
+used only as a fallback when loading old saves that predate this field.
+Cloud providers (OpenAI, Anthropic) only receive `server_url` when it differs
+from the Ollama default (prevents localhost being forwarded to cloud APIs).
+
+### Side Conversations + Resume
+
+When the moderator uses `@Agent`, a side conversation starts:
+
+- `RoundRobinRouter` saves the next main-debate speaker as `main_flow_speaker`
+  in LangGraph state on the first targeted turn; subsequent targeted turns
+  leave it unchanged
+- `ChatContext.in_side_conversation: bool` is set True after a targeted inject;
+  cleared when "Resume Debate" or "Next Turn" is clicked
+- The "Resume Debate" button (purple) replaces "Next Turn" (green) while in a
+  side conversation — both buttons are always in the DOM, toggled via Tailwind
+  `hidden` class to avoid Phoenix LiveView diff mismatches
+- `ctx.current_agent` is preserved across targeted injects so the Resume button
+  correctly shows the main-flow speaker, not the post-side-convo rotation agent
+- On Resume: router uses `main_flow_speaker`, clears it, and debate continues
+  from exactly the right position
+
+### Frontend — ChatContext fields
+
+`ChatContext` has application-populated generic fields so the template stays
+debate-agnostic:
+
+- `session_title: str` — shown as header subtitle (set to debate topic)
+- `status_bar: list[dict]` — `[{"label": str, "value": str}]` strip; built by
+  `_update_status_bar()`: shows Template, Spec (if any), Round X/N or X
+- `agent_turn_count: int` — incremented per agent placeholder; embedded in
+  bubble labels as `"Agent Alpha · 3"`; seeded from history on `/load`
+- `in_side_conversation: bool` — True while a side conversation is active;
+  controls Resume Debate vs Next Turn button visibility
+- `debate_ended: bool` — True when max_rounds reached or debate stopped;
+  disables Next Turn/Resume buttons, shows amber "Debate complete" badge
+- `debate_max_rounds: int | None` — used in status bar Round display (`X / N`)
+- `debate_template: str` — template name shown in status bar
+- `debate_spec_file: str` — spec filename shown in status bar (empty if none)
+
+### Transcript Format
+
+- **Markdown** (default) — rendered in a `<pre>` tag
+- **HTML** (`-html` flag) — styled HTML with agent cards and turn blocks
+
+Backend returns `{"content": "...", "format": "markdown"|"html"}`.
+Frontend stores tuples in `transcript_store`; `/transcript/{debate_id}` renders.
+
+### Data Directories
+
+- `data/templates/` — YAML debate templates
+- `data/debates/` — saved debate JSON files
+- `data/specs/` — Markdown debate spec files
+
+Paths: `settings.debate_templates_dir`, `settings.debate_saves_dir`,
+`settings.debate_specs_dir`.
+
+### LangGraph design notes
+
+See `docs/langgraph-refactor.md` for full architecture decisions, phase plan,
+and next-session starting points (Phase 3: evaluator node).
+
+### PyView / LiveView template notes
+
+- **Avoid swapping elements in conditionals** — when a `{% if %}` replaces one
+  element with a different element (e.g. two different `<button>` tags), the
+  Phoenix LiveView JS diff algorithm can misread dynamic-value indices, causing
+  JavaScript `undefined` to appear in the rendered text. Instead, always render
+  both elements and toggle visibility with Tailwind's `hidden` class.

@@ -1,0 +1,19 @@
+name: default
+description: "Default two-agent debate — FOR vs AGAINST"
+agents:
+  - name: "Agent Alpha"
+    model: "llama3.2"
+    server_url: "http://localhost:11434"
+    system_prompt: >
+      You are {name}, a skilled debater.
+      The debate topic is: "{topic}".
+      You argue FOR the topic. Be concise but persuasive.
+      Keep your responses to 2-3 paragraphs.
+  - name: "Agent Beta"
+    model: "llama3.2"
+    server_url: "http://localhost:11434"
+    system_prompt: >
+      You are {name}, a skilled debater.
+      The debate topic is: "{topic}".
+      You argue AGAINST the topic. Be concise but persuasive.
+      Keep your responses to 2-3 paragraphs.

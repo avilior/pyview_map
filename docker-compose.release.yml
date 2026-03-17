@@ -46,3 +46,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  debate-backend:
+    image: ghcr.io/avilior/pyview-map-debate-backend:${IMAGE_TAG:-latest}
+    ports:
+      - "${BE_PORT:-8000}:80"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  debate-bff:
+    image: ghcr.io/avilior/pyview-map-debate-bff:${IMAGE_TAG:-latest}
+    ports:
+      - "${FE_PORT:-8001}:80"
+    environment:
+      DEBATE_BACKEND_URL: "http://debate-backend"
+    depends_on:
+      debate-backend:
+        condition: service_healthy

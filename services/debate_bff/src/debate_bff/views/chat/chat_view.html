@@ -1,0 +1,159 @@
+<div class="flex flex-col h-screen bg-gray-100">
+    <!-- Header -->
+    <div class="bg-white shadow-sm border-b px-6 py-3 flex items-center justify-between">
+        <div>
+            <h1 class="text-lg font-semibold text-gray-800">Chat</h1>
+            {% if session_title %}
+                <p class="text-xs text-gray-500">{{ session_title }}</p>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+            {% if error_message %}
+                <span class="text-xs text-red-500">{{ error_message }}</span>
+            {% endif %}
+            {% if is_connected %}
+                <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                <span class="text-sm text-gray-500">Connected</span>
+            {% else %}
+                <span class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
+                <span class="text-sm text-gray-500">Local</span>
+                <button
+                    phx-click="connect"
+                    class="text-xs text-blue-600 hover:text-blue-800 underline"
+                >Reconnect</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Controls Bar -->
+    {% if is_connected %}
+    <div class="bg-white border-b">
+        <!-- Action Buttons -->
+        <div class="px-6 py-2 flex items-center gap-3">
+            {% if debate_id %}
+                <button
+                    phx-click="resume_debate"
+                    class="bg-purple-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-purple-700 disabled:opacity-50{% if not in_side_conversation or debate_ended %} hidden{% endif %}"
+                    {% if status == "streaming" %}disabled{% endif %}
+                >Resume Debate{% if current_agent %} → {{ current_agent }}{% endif %}</button>
+                <button
+                    phx-click="next_turn"
+                    class="bg-green-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50{% if in_side_conversation or debate_ended %} hidden{% endif %}"
+                    {% if status == "streaming" %}disabled{% endif %}
+                >Next Turn{% if current_agent %} → {{ current_agent }}{% endif %}</button>
+                {% if debate_ended %}
+                    <span class="text-sm text-amber-600 font-medium">Debate complete — use /end to save</span>
+                {% endif %}
+                <button
+                    phx-click="end_debate"
+                    class="bg-red-500 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-red-600 disabled:opacity-50"
+                    {% if status == "streaming" %}disabled{% endif %}
+                >End Debate</button>
+            {% else %}
+                <span class="text-sm text-gray-400">No active session — type /help for commands</span>
+            {% endif %}
+        </div>
+        {% if status_bar %}
+        <div class="px-6 py-1 flex items-center gap-5 border-t border-gray-100">
+            {% for item in status_bar %}
+            <span class="text-xs text-gray-500">
+                <span class="font-medium text-gray-600">{{ item.label }}:</span> {{ item.value }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Messages -->
+    <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4" id="message-list" phx-hook="ChatScroll">
+        {% if not messages %}
+            <div class="flex items-center justify-center h-full">
+                <p class="text-gray-400 text-lg">
+                    {% if is_connected %}
+                        Type /new &lt;template&gt; &lt;topic&gt; to start a debate, or /help for commands.
+                    {% else %}
+                        Send a message to start the conversation.
+                    {% endif %}
+                </p>
+            </div>
+        {% endif %}
+
+        {% for msg in messages %}
+            {% if msg.role == "user" %}
+                <!-- User message (right-aligned) -->
+                <div class="flex justify-end" data-msg>
+                    <div class="max-w-xl">
+                        <div class="flex items-center justify-end gap-2 mb-1">
+                            <span class="text-xs text-gray-400">{{ msg.timestamp }}</span>
+                            <span class="text-sm font-medium text-gray-600">{{ msg.sender_name }}</span>
+                        </div>
+                        <div class="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5">
+                            <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+                        </div>
+                    </div>
+                </div>
+            {% elif msg.role == "system" %}
+                <!-- System message (centered) -->
+                <div class="flex justify-center" data-msg>
+                    <div class="bg-gray-200 text-gray-600 text-sm rounded-lg px-4 py-2">
+                        <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+                        {% if msg.link_url %}
+                            <a href="{{ msg.link_url }}" target="_blank"
+                               class="inline-block mt-1 text-blue-600 hover:text-blue-800 underline"
+                            >{{ msg.link_label }}</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <!-- Agent message (left-aligned) -->
+                <div class="flex justify-start" data-msg>
+                    <div class="max-w-xl">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-sm font-medium text-gray-600">{{ msg.sender_name }}</span>
+                            <span class="text-xs text-gray-400">{{ msg.timestamp }}</span>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm">
+                            <p class="whitespace-pre-wrap text-gray-800">{{ msg.content }}</p>
+                            {% if msg.is_streaming %}
+                                <span class="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5"></span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Input -->
+    <div class="bg-white border-t px-6 py-4">
+        <form phx-submit="send_message" phx-change="update_input" class="flex gap-3">
+            <input
+                type="text"
+                name="message"
+                value="{{ input_text }}"
+                placeholder="{% if debate_id %}Message or /command...{% else %}Type /help for commands...{% endif %}"
+                autocomplete="off"
+                class="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                {% if status == "streaming" %}disabled{% endif %}
+            />
+            <button
+                type="submit"
+                class="bg-blue-600 text-white px-6 py-2.5 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                {% if status == "streaming" %}disabled{% endif %}
+            >
+                {% if status == "streaming" %}
+                    <span class="flex items-center gap-2">
+                        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        Streaming
+                    </span>
+                {% else %}
+                    Send
+                {% endif %}
+            </button>
+        </form>
+    </div>
+</div>

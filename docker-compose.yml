@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: services/flights_bff/Dockerfile
-      ssh:
-        - default
     ports:
       - "${FLIGHTS_BFF_PORT:-8123}:80"
     environment:
@@ -19,8 +17,6 @@ services:
     build:
       context: .
       dockerfile: services/places_bff/Dockerfile
-      ssh:
-        - default
     ports:
       - "${PLACES_BFF_PORT:-8124}:80"
     environment:
@@ -35,8 +31,6 @@ services:
     build:
       context: .
       dockerfile: services/places_backend/Dockerfile
-      ssh:
-        - default
     ports:
       - "${PLACES_PORT:-8200}:80"
     environment:
@@ -51,8 +45,6 @@ services:
     build:
       context: .
       dockerfile: services/flights_backend/Dockerfile
-      ssh:
-        - default
     ports:
       - "${FLIGHTS_PORT:-8300}:80"
     environment:
@@ -62,3 +54,27 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  debate-backend:
+    build:
+      context: .
+      dockerfile: services/debate_backend/Dockerfile
+    ports:
+      - "${BE_PORT:-8000}:80"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  debate-bff:
+    build:
+      context: .
+      dockerfile: services/debate_bff/Dockerfile
+    ports:
+      - "${FE_PORT:-8001}:80"
+    environment:
+      DEBATE_BACKEND_URL: "http://debate-backend"
+    depends_on:
+      debate-backend:
+        condition: service_healthy
