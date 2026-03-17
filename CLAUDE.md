@@ -97,6 +97,10 @@ services/
 5. Create a `settings.py` with your own env prefix.
 6. Add a `Dockerfile` following the pattern in existing BFFs.
 
+## Architecture Decision Records
+
+For architecture-type decisions (evaluating multiple approaches, choosing patterns, making trade-offs), create an ADR in `docs/adr-<topic>.md` to capture the context, analysis, and decision. An ADR should include: Status, Date, Context (the problem), Decision (chosen approach with details and code examples), alternatives considered, and Consequences. See `docs/adr-dialog-implementation.md` as a reference.
+
 ## Key conventions
 
 - **Context** — each view defines a `@dataclass` context passed to `LiveViewSocket[T]`.
