@@ -290,7 +290,7 @@ release-logs:
 
 # Deploy files to a remote server via scp
 # Usage: just deploy user@server [/path/on/server]
-deploy host dest="~/pyview-map":
+deploy host dest="~/docker/pyview-map":
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Deploying to {{host}}:{{dest}}..."
