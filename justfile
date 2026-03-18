@@ -306,6 +306,31 @@ deploy host dest="~/docker/pyview-map":
     echo "  cp -r example-data debate-data      # or set DEBATE_DATA= in .env"
     echo "  just up                             # pull + start all services"
 
+# Check if GHCR images are aligned with local HEAD
+release-check:
+    #!/usr/bin/env bash
+    local_sha="{{git_sha}}"
+    echo "Local HEAD: ${local_sha}"
+    echo ""
+    all_match=true
+    for pkg in pyview-map-flights-bff pyview-map-places-bff pyview-map-places-backend pyview-map-flights-backend pyview-map-debate-backend pyview-map-debate-bff; do
+        tags=$(gh api user/packages/container/${pkg}/versions \
+            --jq '.[0].metadata.container.tags | join(", ")' 2>/dev/null) || tags="(not found)"
+        if echo "$tags" | grep -q "$local_sha"; then
+            status="✓"
+        else
+            status="✗"
+            all_match=false
+        fi
+        printf "  %s %-40s %s\n" "$status" "$pkg" "$tags"
+    done
+    echo ""
+    if $all_match; then
+        echo "All images match local HEAD (${local_sha})."
+    else
+        echo "Some images are out of date. Run: just release-build"
+    fi
+
 # Show current release images in GHCR
 release-list:
     #!/usr/bin/env bash
