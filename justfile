@@ -298,7 +298,7 @@ deploy host dest="~/docker/pyview-map":
     scp docker-compose.release.yml {{host}}:{{dest}}/
     scp justfile.deploy {{host}}:{{dest}}/justfile
     scp .env.example {{host}}:{{dest}}/.env.example
-    scp -r example-data {{host}}:{{dest}}/
+    scp -r services/debate_backend/example-data {{host}}:{{dest}}/
     echo ""
     echo "Done. On the remote server:"
     echo "  cd {{dest}}"
