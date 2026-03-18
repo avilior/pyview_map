@@ -18,8 +18,8 @@ RUN uv sync --package debate-backend --no-install-project
 # Copy source code
 COPY services/debate_backend/src/ services/debate_backend/src/
 
-# Copy data to /data (clean, mountable path)
-COPY services/debate_backend/data/ /data/
+# Copy example data to /data (clean, mountable path)
+COPY services/debate_backend/example-data/ /data/
 
 # Install the project
 RUN uv sync --package debate-backend

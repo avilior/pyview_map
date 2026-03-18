@@ -52,7 +52,8 @@ htmlcov/
 out/
 *.iml
 
-# Runtime data (Docker bind mount)
+# Runtime data (debate backend + Docker bind mount)
+services/debate_backend/data/
 debate-data/
 
 # macOS
