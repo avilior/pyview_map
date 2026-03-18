@@ -17,7 +17,8 @@ import yaml
 
 from http_stream_transport.jsonrpc.handler_meta import RequestInfo
 from http_stream_transport.jsonrpc.jrpc_service import jrpc_service
-from http_stream_transport.server.settings import settings
+
+from debate_backend.settings import settings
 
 from debate_backend.debate import (
     Debate,
@@ -205,7 +206,7 @@ def _cmd_new(args: list[str]) -> dict:
     max_rounds: int | None = None
     if spec_name:
         try:
-            spec_data = load_spec(settings.debate_specs_dir, spec_name)
+            spec_data = load_spec(settings.specs_dir, spec_name)
         except FileNotFoundError:
             return _error(f"Spec file not found: {spec_name}")
         background_info = spec_data.background
@@ -219,12 +220,12 @@ def _cmd_new(args: list[str]) -> dict:
         return _error("Usage: /new -t <template> -o <filename> [-s <spec>] [<topic>]")
 
     # Check if the output file already exists
-    save_path = settings.debate_saves_dir / (output_name if output_name.endswith(".json") else output_name + ".json")
+    save_path = settings.saves_dir / (output_name if output_name.endswith(".json") else output_name + ".json")
     if save_path.exists():
         return _error(f"File already exists: {save_path.name}")
 
     try:
-        template_data = load_template(settings.debate_templates_dir, template_name)
+        template_data = load_template(settings.templates_dir, template_name)
     except FileNotFoundError:
         return _error(f"Template not found: {template_name}")
     debate = Debate.from_template(
@@ -258,7 +259,7 @@ def _cmd_save(debate_id: str | None) -> dict:
     debate = _get_debate(_engines.get(debate_id))
     if debate is None:
         return _error("Debate not found")
-    fname = save_debate(debate, settings.debate_saves_dir,
+    fname = save_debate(debate, settings.saves_dir,
                         filename=debate.save_filename or None)
     return {"command": "save", "filename": fname, "debate_id": debate_id}
 
@@ -271,7 +272,7 @@ def _cmd_save_as(debate_id: str | None, args: list[str]) -> dict:
     debate = _get_debate(_engines.get(debate_id))
     if debate is None:
         return _error("Debate not found")
-    fname = save_debate(debate, settings.debate_saves_dir, filename=args[0])
+    fname = save_debate(debate, settings.saves_dir, filename=args[0])
     return {"command": "save_as", "filename": fname, "debate_id": debate_id}
 
 
@@ -280,7 +281,7 @@ def _cmd_load(args: list[str]) -> dict:
         return _error("Usage: /load <filename>")
     filename = args[0]
     try:
-        debate = load_debate(settings.debate_saves_dir, filename)
+        debate = load_debate(settings.saves_dir, filename)
     except FileNotFoundError:
         return _error(f"Saved debate not found: {filename}")
     engine = _make_engine_default(debate)
@@ -308,7 +309,7 @@ def _cmd_end(debate_id: str | None) -> dict:
     if engine is None:
         return _error("Debate not found")
     engine.stop()
-    fname = save_debate(engine.debate, settings.debate_saves_dir,
+    fname = save_debate(engine.debate, settings.saves_dir,
                         filename=engine.save_filename or None)
     return {
         "command": "end",
@@ -319,7 +320,7 @@ def _cmd_end(debate_id: str | None) -> dict:
 
 
 def _cmd_templates() -> dict:
-    templates = list_templates(settings.debate_templates_dir)
+    templates = list_templates(settings.templates_dir)
     return {"command": "templates", "templates": templates}
 
 
@@ -327,7 +328,7 @@ def _cmd_template(args: list[str]) -> dict:
     if not args:
         return _error("Usage: /template <name>")
     name = args[0]
-    path = settings.debate_templates_dir / (name if name.endswith(".yaml") else name + ".yaml")
+    path = settings.templates_dir / (name if name.endswith(".yaml") else name + ".yaml")
     if not path.exists():
         return _error(f"Template not found: {name}")
     content = path.read_text()
@@ -339,7 +340,7 @@ def _cmd_template(args: list[str]) -> dict:
 
 
 def _cmd_specs() -> dict:
-    specs = list_specs(settings.debate_specs_dir)
+    specs = list_specs(settings.specs_dir)
     return {"command": "specs", "specs": specs}
 
 
@@ -347,7 +348,7 @@ def _cmd_debate(args: list[str]) -> dict:
     if not args:
         return _error("Usage: /debate <filename>")
     try:
-        debate = load_debate(settings.debate_saves_dir, args[0])
+        debate = load_debate(settings.saves_dir, args[0])
     except FileNotFoundError:
         return _error(f"Saved debate not found: {args[0]}")
     return {
@@ -364,7 +365,7 @@ def _cmd_debate(args: list[str]) -> dict:
 
 
 def _cmd_debates() -> dict:
-    debates = list_saved_debates(settings.debate_saves_dir)
+    debates = list_saved_debates(settings.saves_dir)
     return {"command": "debates", "debates": debates}
 
 
@@ -374,7 +375,7 @@ def _cmd_spec(args: list[str]) -> dict:
     filename = args[0]
     if not filename.endswith(".md"):
         filename += ".md"
-    path = settings.debate_specs_dir / filename
+    path = settings.specs_dir / filename
     if not path.exists():
         return _error(f"Spec file not found: {filename}")
     return {
@@ -507,7 +508,7 @@ def _cmd_transcript(debate_id: str | None, args: list[str]) -> dict:
 
     if input_file:
         try:
-            debate = load_debate(settings.debate_saves_dir, input_file)
+            debate = load_debate(settings.saves_dir, input_file)
         except FileNotFoundError:
             return _error(f"Saved debate not found: {input_file}")
     elif debate_id:
@@ -535,11 +536,11 @@ def _cmd_transcript(debate_id: str | None, args: list[str]) -> dict:
 
 def _cmd_config() -> dict:
     lines = [
-        "Server configuration:",
-        f"  templates_dir:  {settings.debate_templates_dir}",
-        f"  saves_dir:      {settings.debate_saves_dir}",
-        f"  specs_dir:      {settings.debate_specs_dir}",
-        f"  sse_get:        {settings.enable_sse_get_endpoint}",
+        "Debate configuration:",
+        f"  data_dir:       {settings.data_dir}",
+        f"  templates_dir:  {settings.templates_dir}",
+        f"  saves_dir:      {settings.saves_dir}",
+        f"  specs_dir:      {settings.specs_dir}",
     ]
     return {"command": "config", "text": "\n".join(lines)}
 

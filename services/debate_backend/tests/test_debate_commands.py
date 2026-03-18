@@ -46,7 +46,17 @@ def _clear_debates():
     _debates.clear()
 
 
-def _make_template_yaml(tmp_path: Path, name: str = "test", **overrides) -> Path:
+@pytest.fixture
+def data_dir(tmp_path: Path, monkeypatch):
+    """Create a temporary data directory with subdirs and patch settings."""
+    (tmp_path / "templates").mkdir()
+    (tmp_path / "debates").mkdir()
+    (tmp_path / "specs").mkdir()
+    monkeypatch.setattr("debate_backend.commands.settings.data_dir", tmp_path)
+    return tmp_path
+
+
+def _make_template_yaml(templates_dir: Path, name: str = "test", **overrides) -> Path:
     data = {
         "name": name,
         "description": f"{name} template",
@@ -56,7 +66,7 @@ def _make_template_yaml(tmp_path: Path, name: str = "test", **overrides) -> Path
         ],
     }
     data.update(overrides)
-    path = tmp_path / f"{name}.yaml"
+    path = templates_dir / f"{name}.yaml"
     path.write_text(yaml.dump(data))
     return path
 
@@ -219,16 +229,8 @@ def test_list_saved_debates_empty(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_new(tmp_path: Path, monkeypatch):
-    _make_template_yaml(tmp_path, "test")
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_templates_dir",
-        tmp_path,
-    )
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path / "saves",
-    )
+def test_cmd_new(data_dir: Path):
+    _make_template_yaml(data_dir / "templates", "test")
     result = _cmd_new(["-t", "test", "-o", "my_debate", "AI", "ethics"])
     assert result["command"] == "new"
     assert result["topic"] == "AI ethics"
@@ -245,33 +247,15 @@ def test_cmd_new_missing_args():
     assert "usage" in result["message"].lower()
 
 
-def test_cmd_new_unknown_template(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_templates_dir",
-        tmp_path,
-    )
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path / "saves",
-    )
+def test_cmd_new_unknown_template(data_dir: Path):
     result = _cmd_new(["-t", "nonexistent", "-o", "output", "topic"])
     assert result["command"] == "error"
     assert "not found" in result["message"].lower()
 
 
-def test_cmd_new_file_exists(tmp_path: Path, monkeypatch):
-    _make_template_yaml(tmp_path, "test")
-    saves_dir = tmp_path / "saves"
-    saves_dir.mkdir()
-    (saves_dir / "taken.json").write_text("{}")
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_templates_dir",
-        tmp_path,
-    )
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        saves_dir,
-    )
+def test_cmd_new_file_exists(data_dir: Path):
+    _make_template_yaml(data_dir / "templates", "test")
+    (data_dir / "debates" / "taken.json").write_text("{}")
     result = _cmd_new(["-t", "test", "-o", "taken", "some topic"])
     assert result["command"] == "error"
     assert "already exists" in result["message"].lower()
@@ -282,16 +266,12 @@ def test_cmd_new_file_exists(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_save(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_save(data_dir: Path):
     d = _make_debate_with_history()
     _debates[d.debate_id] = d
     result = _cmd_save(d.debate_id)
     assert result["command"] == "save"
-    assert (tmp_path / result["filename"]).exists()
+    assert (data_dir / "debates" / result["filename"]).exists()
 
 
 def test_cmd_save_no_debate():
@@ -299,17 +279,13 @@ def test_cmd_save_no_debate():
     assert result["command"] == "error"
 
 
-def test_cmd_save_as(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_save_as(data_dir: Path):
     d = _make_debate_with_history()
     _debates[d.debate_id] = d
     result = _cmd_save_as(d.debate_id, ["my-debate"])
     assert result["command"] == "save_as"
     assert result["filename"] == "my-debate.json"
-    assert (tmp_path / "my-debate.json").exists()
+    assert (data_dir / "debates" / "my-debate.json").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -317,13 +293,9 @@ def test_cmd_save_as(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_load(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_load(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path, "saved")
+    save_debate(d, data_dir / "debates", "saved")
     result = _cmd_load(["saved"])
     assert result["command"] == "load"
     assert result["debate_id"] == d.debate_id
@@ -334,11 +306,7 @@ def test_cmd_load(tmp_path: Path, monkeypatch):
     assert d.debate_id in _debates
 
 
-def test_cmd_load_not_found(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_load_not_found(data_dir: Path):
     result = _cmd_load(["nope"])
     assert result["command"] == "error"
 
@@ -353,18 +321,14 @@ def test_cmd_load_no_args():
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_end(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_end(data_dir: Path):
     d = _make_debate_with_history()
     _debates[d.debate_id] = d
     result = _cmd_end(d.debate_id)
     assert result["command"] == "end"
     assert result["turn_count"] == 2
     assert d.status == "ended"
-    assert (tmp_path / result["filename"]).exists()
+    assert (data_dir / "debates" / result["filename"]).exists()
 
 
 def test_cmd_end_no_debate():
@@ -377,24 +341,16 @@ def test_cmd_end_no_debate():
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_templates(tmp_path: Path, monkeypatch):
-    _make_template_yaml(tmp_path, "t1")
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_templates_dir",
-        tmp_path,
-    )
+def test_cmd_templates(data_dir: Path):
+    _make_template_yaml(data_dir / "templates", "t1")
     result = _cmd_templates()
     assert result["command"] == "templates"
     assert len(result["templates"]) == 1
 
 
-def test_cmd_debates(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_debates(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path)
+    save_debate(d, data_dir / "debates")
     result = _cmd_debates()
     assert result["command"] == "debates"
     assert len(result["debates"]) == 1
@@ -413,6 +369,7 @@ def test_cmd_config():
     assert "text" in result
     assert "templates_dir" in result["text"]
     assert "saves_dir" in result["text"]
+    assert "data_dir" in result["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -444,13 +401,9 @@ def test_cmd_transcript_active_debate():
     assert "# Debate:" in result["content"]
 
 
-def test_cmd_transcript_named_debate(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_transcript_named_debate(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path, "my-debate")
+    save_debate(d, data_dir / "debates", "my-debate")
     result = _cmd_transcript(None, ["my-debate"])
     assert result["command"] == "transcript"
     assert result["format"] == "markdown"
@@ -462,11 +415,7 @@ def test_cmd_transcript_no_debate():
     assert result["command"] == "error"
 
 
-def test_cmd_transcript_not_found(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_transcript_not_found(data_dir: Path):
     result = _cmd_transcript(None, ["nonexistent"])
     assert result["command"] == "error"
 
@@ -560,39 +509,27 @@ def test_cmd_transcript_html_flag():
     assert "<h1>" in result["content"]
 
 
-def test_cmd_transcript_html_flag_with_filename(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_transcript_html_flag_with_filename(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path, "my-debate")
+    save_debate(d, data_dir / "debates", "my-debate")
     result = _cmd_transcript(None, ["-html", "my-debate"])
     assert result["command"] == "transcript"
     assert result["format"] == "html"
     assert "<h1>" in result["content"]
 
 
-def test_cmd_transcript_input_flag(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_transcript_input_flag(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path, "flagged")
+    save_debate(d, data_dir / "debates", "flagged")
     result = _cmd_transcript(None, ["-i", "flagged"])
     assert result["command"] == "transcript"
     assert result["format"] == "markdown"
     assert "# Debate:" in result["content"]
 
 
-def test_cmd_transcript_input_flag_with_html(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "debate_backend.commands.settings.debate_saves_dir",
-        tmp_path,
-    )
+def test_cmd_transcript_input_flag_with_html(data_dir: Path):
     d = _make_debate_with_history()
-    save_debate(d, tmp_path, "flagged")
+    save_debate(d, data_dir / "debates", "flagged")
     result = _cmd_transcript(None, ["-html", "-i", "flagged"])
     assert result["command"] == "transcript"
     assert result["format"] == "html"

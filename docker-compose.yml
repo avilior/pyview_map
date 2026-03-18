@@ -61,6 +61,8 @@ services:
       dockerfile: services/debate_backend/Dockerfile
     ports:
       - "${BE_PORT:-8000}:80"
+    volumes:
+      - ${DEBATE_DATA:-./debate-data}:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
       interval: 5s

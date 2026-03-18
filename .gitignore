@@ -52,6 +52,9 @@ htmlcov/
 out/
 *.iml
 
+# Runtime data (Docker bind mount)
+debate-data/
+
 # macOS
 .DS_Store
 .AppleDouble

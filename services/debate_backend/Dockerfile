@@ -15,9 +15,11 @@ COPY services/debate_backend/pyproject.toml services/debate_backend/
 # Install dependencies (without the project itself)
 RUN uv sync --package debate-backend --no-install-project
 
-# Copy source code and data
+# Copy source code
 COPY services/debate_backend/src/ services/debate_backend/src/
-COPY services/debate_backend/data/ services/debate_backend/data/
+
+# Copy data to /data (clean, mountable path)
+COPY services/debate_backend/data/ /data/
 
 # Install the project
 RUN uv sync --package debate-backend
@@ -25,5 +27,6 @@ RUN uv sync --package debate-backend
 EXPOSE 80
 
 ENV BE_PORT=80
+ENV DEBATE_DATA_DIR=/data
 
 CMD ["uv", "run", "--package", "debate-backend", "debate-backend"]

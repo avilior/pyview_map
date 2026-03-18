@@ -298,11 +298,13 @@ deploy host dest="~/docker/pyview-map":
     scp docker-compose.release.yml {{host}}:{{dest}}/
     scp justfile.deploy {{host}}:{{dest}}/justfile
     scp .env.example {{host}}:{{dest}}/.env.example
+    scp -r example-data {{host}}:{{dest}}/
     echo ""
     echo "Done. On the remote server:"
     echo "  cd {{dest}}"
-    echo "  cp .env.example .env   # edit with your settings"
-    echo "  just up                # pull + start all services"
+    echo "  cp .env.example .env                # edit with your settings"
+    echo "  cp -r example-data debate-data      # or set DEBATE_DATA= in .env"
+    echo "  just up                             # pull + start all services"
 
 # Show current release images in GHCR
 release-list:
