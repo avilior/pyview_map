@@ -9,7 +9,7 @@ from bff_engine.shared.event_broadcaster import EventBroadcaster
 from dmap_models.latlng import LatLng
 from dmap_models.map_events import MapEvent, MapReadyEvent, MarkerEvent, PolylineEvent
 from bff_engine.shared.cid import next_cid
-from bff_engine.shared.topics import marker_ops_topic, polyline_ops_topic, map_cmd_topic
+from bff_engine.shared.topics import marker_ops_topic, polyline_ops_topic, map_cmd_topic, icon_cmd_topic
 
 
 class MapDriver:
@@ -47,6 +47,7 @@ class MapDriver:
         self._marker_topics = {marker_ops_topic(ch), marker_ops_topic(ch, cid)}
         self._polyline_topics = {polyline_ops_topic(ch), polyline_ops_topic(ch, cid)}
         self._cmd_topics = {map_cmd_topic(ch), map_cmd_topic(ch, cid)}
+        self._icon_cmd_topic = icon_cmd_topic()
 
     @property
     def cid(self) -> str:
@@ -61,6 +62,7 @@ class MapDriver:
             await socket.subscribe(topic)
         for topic in self._cmd_topics:
             await socket.subscribe(topic)
+        await socket.subscribe(self._icon_cmd_topic)
 
     def disconnect(self):
         """Clear retained events for this driver's channel."""
@@ -88,6 +90,12 @@ class MapDriver:
             return True
 
         if topic in self._cmd_topics:
+            cmd = event.payload
+            event_name, payload = cmd.to_push_event(target=self._channel)
+            await socket.push_event(event_name, payload)
+            return True
+
+        if topic == self._icon_cmd_topic:
             cmd = event.payload
             event_name, payload = cmd.to_push_event(target=self._channel)
             await socket.push_event(event_name, payload)

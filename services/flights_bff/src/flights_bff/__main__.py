@@ -6,6 +6,7 @@ import uvicorn
 import bff_engine.dynamic_map.api.marker_api  # noqa: F401
 import bff_engine.dynamic_map.api.polyline_api  # noqa: F401
 import bff_engine.dynamic_map.api.map_cmd_api  # noqa: F401
+import bff_engine.dynamic_map.api.icon_api  # noqa: F401
 
 from bff_engine.bff_app import create_app
 from bff_engine.bff_api import create_api

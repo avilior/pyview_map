@@ -208,6 +208,86 @@ socket.context.items.delete_by_id("items-<id>")      # remove
 PubSub topics: `{prefix}:{channel}` (broadcast) or `{prefix}:{channel}:{cid}` (targeted).
 Server-to-client commands namespaced: `to_push_event(target=channel)` → `"left:setView"`.
 
+## Icon registry
+
+The map component uses a pluggable icon registry to resolve marker icon names
+to Leaflet `DivIcon` definitions. Icons can be built-in (shipped with
+`bff_engine`), loaded from a custom JSON file, or added/removed at runtime via
+JSON-RPC.
+
+### Icon definition schema
+
+Each icon is a JSON object keyed by name:
+
+```json
+{
+  "my-icon": {
+    "html": "<div style=\"...\">...</div>",
+    "iconSize": [24, 24],
+    "iconAnchor": [12, 12],
+    "className": ""
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `html` | `string` | HTML content rendered inside the Leaflet `DivIcon` |
+| `iconSize` | `[width, height]` | Size in pixels |
+| `iconAnchor` | `[x, y]` | Anchor point relative to top-left corner |
+| `className` | `string` | Optional CSS class applied to the icon container |
+
+### Resolution order
+
+When `_makeIcon(instance, iconName, heading)` runs in the browser:
+
+1. Look up `iconName` in the icon registry
+2. If not found and `iconName` is not `"default"` — treat `iconName` as **literal
+   content** (emoji, SVG, HTML) and wrap in a centered container
+3. If not found and `iconName` is `"default"` — use the `"default"` registry
+   entry, falling back to a hardcoded blue dot
+
+### Built-in icons
+
+Defined in `packages/bff_engine/src/bff_engine/dynamic_map/icons.json`:
+`default`, `red-dot`, `green-dot`, `black-dot`, `black-square`, `warning`,
+`vehicle`, `airplane`.
+
+Built-in icons **cannot** be overwritten or removed at runtime.
+
+### Configurable icon file
+
+Call `configure(path)` from `bff_engine.dynamic_map.icon_registry` to load a
+custom JSON file. The built-in icons are loaded first, then the custom file is
+merged on top — so custom files can add new icons or override built-in
+definitions at load time (but not at runtime via the API).
+
+### JSON-RPC API (`icons.*`)
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `icons.add` | `name, html, iconSize, iconAnchor, className?` | Register a new icon. Rejects if name already exists (built-in or dynamic) |
+| `icons.remove` | `name` | Remove a dynamic icon. Built-in icons cannot be removed |
+| `icons.list` | *(none)* | Return all icon names and definitions |
+
+To replace a dynamic icon: call `icons.remove` then `icons.add`.
+
+After `icons.add` or `icons.remove`, the full registry JSON is broadcast to all
+connected MapDrivers via the global `icon-cmd` PubSub topic. Each driver pushes
+an `updateIconRegistry` event to the browser, which replaces the in-memory
+registry so subsequent marker renders use the updated icons.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `dynamic_map/icons.json` | Built-in icon definitions |
+| `dynamic_map/icon_registry.py` | `IconRegistry` class, global `icon_registry`, `configure()` |
+| `dynamic_map/api/icon_api.py` | `icons.add/remove/list` JSON-RPC handlers |
+| `dynamic_map/models/icon_commands.py` | `UpdateIconRegistryCmd` dataclass |
+| `dynamic_map/static/dynamic_map.js` | `_makeIcon()` + `updateIconRegistry` event handler |
+| `shared/topics.py` | `icon_cmd_topic()` — global PubSub topic |
+
 ## Spec compliance (MCP transport)
 
 The server enforces MCP streaming spec rules:

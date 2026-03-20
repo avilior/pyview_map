@@ -367,6 +367,9 @@ window.Hooks.DynamicMap = {
       const polyline = instance.polylines.get(`${channel}-polylines-${id}`);
       if (polyline) { instance.map.fitBounds(polyline.getBounds()); polyline.openTooltip(); }
     });
+    this.handleEvent(`${channel}:updateIconRegistry`, ({registry}) => {
+      instance.iconRegistry = JSON.parse(registry);
+    });
 
     // mousemove — throttled to at most once per second
     let _lastMove = 0;

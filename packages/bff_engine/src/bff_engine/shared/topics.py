@@ -27,3 +27,8 @@ def list_ops_topic(channel: str, cid: str = "*") -> str:
 
 def list_cmd_topic(channel: str, cid: str = "*") -> str:
     return _topic("list-cmd", channel, cid)
+
+
+def icon_cmd_topic() -> str:
+    """Global topic for icon registry updates (not per-channel)."""
+    return "icon-cmd"
